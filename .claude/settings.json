@@ -1,0 +1,13 @@
+{
+    "permissions": {
+      "allow": [
+        "Bash(npm run lint)"
+      ],
+      "deny": [],
+      "defaultMode": "auto"
+    },
+    "statusLine": {
+      "type": "command",
+      "command": "echo \"$(git branch --show-current) | $(npx ccusage@latest statusline --visual-burn-rate emoji)\""
+    }
+  }
