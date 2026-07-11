@@ -1,4 +1,8 @@
+mod media_session;
 mod mpv;
+mod secrets;
+
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -10,6 +14,12 @@ pub fn run() {
       mpv::mpv_load,
       mpv::mpv_set_pause,
       mpv::mpv_set_volume,
+      mpv::mpv_get_property,
+      secrets::secrets_set,
+      secrets::secrets_get,
+      secrets::secrets_delete,
+      media_session::media_session_set_metadata,
+      media_session::media_session_set_playback,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -19,6 +29,19 @@ pub fn run() {
             .build(),
         )?;
       }
+
+      match media_session::init(&app.handle()) {
+        Ok(controls) => {
+          app.manage(media_session::MediaSessionState(std::sync::Mutex::new(Some(
+            controls,
+          ))));
+        }
+        Err(e) => {
+          log::warn!("failed to initialize OS media session: {e}");
+          app.manage(media_session::MediaSessionState::default());
+        }
+      }
+
       Ok(())
     })
     .run(tauri::generate_context!())

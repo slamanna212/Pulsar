@@ -6,10 +6,11 @@ import { usePlayerStore } from './stores/playerStore';
 import { ChannelList } from './components/ChannelList';
 import { SettingsModal } from './components/SettingsModal';
 import { NowPlayingPanel } from './components/NowPlayingPanel';
+import { setMediaMetadata } from './lib/mediaSession';
 
 function AppShellContent() {
   const { settings, loaded, load } = useSettingsStore();
-  const { channels, status, error, fetchChannels } = useChannelStore();
+  const { channels, status, error, fetchChannels, pollNowPlaying, nowPlaying } = useChannelStore();
   const { currentChannel, selectChannel, initEventListener } = usePlayerStore();
   const [settingsOpened, setSettingsOpened] = useState(false);
 
@@ -34,6 +35,32 @@ function AppShellContent() {
     }
   }, [loaded, settings.baseUrl, settings.username, settings.password, settings.categoryId, fetchChannels]);
 
+  useEffect(() => {
+    if (!loaded || !settings.stellarApiKey || channels.length === 0) return;
+    pollNowPlaying(settings.stellarApiKey);
+    const id = setInterval(
+      () => pollNowPlaying(settings.stellarApiKey),
+      settings.pollIntervalSec * 1000,
+    );
+    return () => clearInterval(id);
+  }, [loaded, settings.stellarApiKey, settings.pollIntervalSec, channels, pollNowPlaying]);
+
+  const currentNowPlaying = currentChannel ? nowPlaying.get(currentChannel.stream_id) : undefined;
+
+  useEffect(() => {
+    if (!currentChannel) return;
+    if (currentNowPlaying) {
+      setMediaMetadata({
+        title: currentNowPlaying.title,
+        artist: currentNowPlaying.artist,
+        album: currentNowPlaying.album || undefined,
+        coverUrl: currentNowPlaying.artwork_url || currentChannel.stream_icon,
+      });
+    } else {
+      setMediaMetadata({ title: currentChannel.name, artist: '', coverUrl: currentChannel.stream_icon });
+    }
+  }, [currentChannel, currentNowPlaying]);
+
   return (
     <AppShell header={{ height: 56 }} navbar={{ width: 320, breakpoint: 'sm' }} padding="md">
       <AppShell.Header>
@@ -54,6 +81,7 @@ function AppShellContent() {
           status={status}
           error={error}
           activeStreamId={currentChannel?.stream_id ?? null}
+          nowPlaying={nowPlaying}
           onSelect={(channel) =>
             selectChannel(
               channel,
@@ -65,7 +93,7 @@ function AppShellContent() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <NowPlayingPanel />
+        <NowPlayingPanel nowPlayingEntry={currentNowPlaying} />
       </AppShell.Main>
 
       <SettingsModal opened={settingsOpened} onClose={() => setSettingsOpened(false)} />

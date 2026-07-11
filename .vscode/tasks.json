@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev",
+      "type": "shell",
+      "command": "npm run tauri dev",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "build (current OS)",
+      "type": "shell",
+      "command": "npm run tauri build",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "lint",
+      "type": "shell",
+      "command": "npm run lint",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "typecheck",
+      "type": "shell",
+      "command": "npx tsc --noEmit",
+      "group": "test",
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "cargo check (src-tauri)",
+      "type": "shell",
+      "command": "cargo check",
+      "options": { "cwd": "${workspaceFolder}/src-tauri" },
+      "group": "test",
+      "problemMatcher": ["$rustc"]
+    }
+  ]
+}

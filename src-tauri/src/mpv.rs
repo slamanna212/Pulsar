@@ -123,3 +123,16 @@ pub async fn mpv_set_pause(state: State<'_, MpvState>, paused: bool) -> Result<(
 pub async fn mpv_set_volume(state: State<'_, MpvState>, volume: u8) -> Result<(), String> {
     send_command(&state, json!({ "command": ["set_property", "volume", volume] })).await
 }
+
+/// Fixed request_id so the frontend can correlate the async IPC reply on the
+/// shared "mpv-event" stream without a full request/response tracking table.
+pub const GET_PROPERTY_REQUEST_ID: i64 = 777;
+
+#[tauri::command]
+pub async fn mpv_get_property(state: State<'_, MpvState>, name: String) -> Result<(), String> {
+    send_command(
+        &state,
+        json!({ "command": ["get_property", name], "request_id": GET_PROPERTY_REQUEST_ID }),
+    )
+    .await
+}
