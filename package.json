@@ -11,8 +11,11 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource/sora": "^5.2.8",
+    "@fontsource/space-grotesk": "^5.2.10",
     "@mantine/core": "^9.4.1",
     "@mantine/hooks": "^9.4.1",
+    "@tabler/icons-react": "^3.44.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-http": "^2.5.9",
     "@tauri-apps/plugin-store": "^2.4.3",

@@ -26,3 +26,50 @@ export interface NowPlayingEntry {
   artworkUrl?: string;
   updatedAt: string;
 }
+
+export interface StellarChannelCategory {
+  name: string;
+  order: number;
+  is_primary: boolean;
+}
+
+export interface StellarChannelLogos {
+  color_dark_square?: string;
+  [key: string]: string | undefined;
+}
+
+export interface StellarChannel {
+  id: string;
+  name: string;
+  marketing_name: string;
+  channel_number: number;
+  categories: StellarChannelCategory[];
+  logos?: StellarChannelLogos;
+  dark_bg_color?: string;
+  medium_description?: string;
+  long_description?: string;
+  streaming_name?: string;
+  twitter?: string;
+  facebook?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface StellarChannelsResponse {
+  channel_count: number;
+  channels: StellarChannel[] | Record<string, StellarChannel>;
+}
+
+export interface StellarHistoryEntry {
+  played_at: string;
+  artist: string;
+  title: string;
+  album?: string;
+  artwork_url?: string;
+  cut_type?: string;
+}
+
+export interface StellarHistoryResponse {
+  channel_id: string;
+  plays: StellarHistoryEntry[];
+}

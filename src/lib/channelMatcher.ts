@@ -1,5 +1,5 @@
 import type { XtreamChannel } from '../types/xtream';
-import type { StellarStation } from '../types/stellarTunerLog';
+import type { StellarChannel, StellarStation } from '../types/stellarTunerLog';
 
 export const MATCH_THRESHOLD = 0.85;
 
@@ -32,21 +32,29 @@ export function nameSimilarity(a: string, b: string): number {
   return 1 - levenshtein(a, b) / maxLen;
 }
 
+export function findBestMatch<T>(
+  xtreamName: string,
+  items: T[],
+  nameOf: (item: T) => string,
+): T | null {
+  const target = normalizeChannelName(xtreamName);
+  let best: T | null = null;
+  let bestScore = 0;
+  for (const item of items) {
+    const score = nameSimilarity(target, normalizeChannelName(nameOf(item)));
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  }
+  return bestScore >= MATCH_THRESHOLD ? best : null;
+}
+
 export function findBestStationMatch(
   xtreamName: string,
   stations: StellarStation[],
 ): StellarStation | null {
-  const target = normalizeChannelName(xtreamName);
-  let best: StellarStation | null = null;
-  let bestScore = 0;
-  for (const station of stations) {
-    const score = nameSimilarity(target, normalizeChannelName(station.name));
-    if (score > bestScore) {
-      bestScore = score;
-      best = station;
-    }
-  }
-  return bestScore >= MATCH_THRESHOLD ? best : null;
+  return findBestMatch(xtreamName, stations, (station) => station.name);
 }
 
 export function buildNowPlayingMap(
@@ -56,6 +64,20 @@ export function buildNowPlayingMap(
   const map = new Map<number, StellarStation>();
   for (const channel of channels) {
     const match = findBestStationMatch(channel.name, stations);
+    if (match) {
+      map.set(channel.stream_id, match);
+    }
+  }
+  return map;
+}
+
+export function buildChannelMetadataMap(
+  channels: XtreamChannel[],
+  stellarChannels: StellarChannel[],
+): Map<number, StellarChannel> {
+  const map = new Map<number, StellarChannel>();
+  for (const channel of channels) {
+    const match = findBestMatch(channel.name, stellarChannels, (c) => c.marketing_name || c.name);
     if (match) {
       map.set(channel.stream_id, match);
     }

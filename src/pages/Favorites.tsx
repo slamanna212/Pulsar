@@ -1,0 +1,37 @@
+import { useMemo } from 'react';
+import { Text } from '@mantine/core';
+import { useChannelStore } from '../stores/channelStore';
+import { useLibraryStore } from '../stores/libraryStore';
+import { ChannelGrid } from '../components/ChannelGrid';
+
+interface FavoritesProps {
+  onSelectChannel: (streamId: number) => void;
+}
+
+export function Favorites({ onSelectChannel }: FavoritesProps) {
+  const allChannels = useChannelStore((s) => s.channels);
+  const channelMetadata = useChannelStore((s) => s.channelMetadata);
+  const favorites = useLibraryStore((s) => s.favorites);
+  const sortMode = useLibraryStore((s) => s.sortMode);
+  const setSortMode = useLibraryStore((s) => s.setSortMode);
+  const toggleFavorite = useLibraryStore((s) => s.toggleFavorite);
+
+  const channels = useMemo(
+    () => allChannels.filter((c) => favorites.includes(c.stream_id)),
+    [allChannels, favorites],
+  );
+
+  return (
+    <ChannelGrid
+      title="Favorites"
+      channels={channels}
+      channelMetadata={channelMetadata}
+      favorites={favorites}
+      sortMode={sortMode}
+      onSortModeChange={setSortMode}
+      onToggleFavorite={toggleFavorite}
+      onSelect={onSelectChannel}
+      emptyState={<Text c="dimmed">Hover any channel and tap the star to save it here.</Text>}
+    />
+  );
+}

@@ -1,6 +1,7 @@
 mod media_session;
 mod mpv;
 mod secrets;
+mod waveform;
 
 use tauri::Manager;
 
@@ -29,6 +30,8 @@ pub fn run() {
             .build(),
         )?;
       }
+
+      waveform::ensure_started(&app.handle());
 
       match media_session::init(&app.handle()) {
         Ok(controls) => {

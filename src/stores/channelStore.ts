@@ -1,17 +1,20 @@
 import { create } from 'zustand';
 import type { XtreamChannel } from '../types/xtream';
-import type { StellarStation } from '../types/stellarTunerLog';
+import type { StellarChannel, StellarStation } from '../types/stellarTunerLog';
 import { getLiveStreams, type XtreamCredentials } from '../lib/xtream';
-import { getNowPlaying } from '../lib/stellarTunerLog';
-import { buildNowPlayingMap } from '../lib/channelMatcher';
+import { getChannels, getNowPlaying } from '../lib/stellarTunerLog';
+import { buildChannelMetadataMap, buildNowPlayingMap } from '../lib/channelMatcher';
 
 interface ChannelState {
   channels: XtreamChannel[];
   status: 'idle' | 'loading' | 'loaded' | 'error';
   error: string | null;
   nowPlaying: Map<number, StellarStation>;
+  channelMetadata: Map<number, StellarChannel>;
+  metadataStatus: 'idle' | 'loading' | 'loaded' | 'error';
   fetchChannels: (creds: XtreamCredentials, categoryId: string) => Promise<void>;
   pollNowPlaying: (apiKey: string) => Promise<void>;
+  fetchChannelMetadata: () => Promise<void>;
 }
 
 export const useChannelStore = create<ChannelState>((set, get) => ({
@@ -19,6 +22,8 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
   status: 'idle',
   error: null,
   nowPlaying: new Map(),
+  channelMetadata: new Map(),
+  metadataStatus: 'idle',
   async fetchChannels(creds, categoryId) {
     set({ status: 'loading', error: null });
     try {
@@ -38,6 +43,22 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
       set({ nowPlaying: buildNowPlayingMap(channels, stations) });
     } catch {
       // transient poll failure - keep showing the last known now-playing data
+    }
+  },
+  async fetchChannelMetadata() {
+    const { channels, metadataStatus } = get();
+    if (channels.length === 0 || metadataStatus === 'loading') return;
+    set({ metadataStatus: 'loading' });
+    try {
+      const stellarChannels = await getChannels();
+      set({
+        channelMetadata: buildChannelMetadataMap(channels, stellarChannels),
+        metadataStatus: 'loaded',
+      });
+    } catch {
+      // channel metadata is an enhancement (categories/logos/description/socials) -
+      // the app remains usable from Xtream data alone if this fails
+      set({ metadataStatus: 'error' });
     }
   },
 }));

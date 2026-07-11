@@ -1,49 +1,162 @@
-import { useEffect, useState } from 'react';
-import { ActionIcon, AppShell, Group, MantineProvider, Text, Title } from '@mantine/core';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { MantineProvider } from '@mantine/core';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { primaryMonitor } from '@tauri-apps/api/window';
+import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
+import { IconApps, IconHistory, IconHome2, IconMinus, IconSettings, IconSquare, IconStar, IconX } from '@tabler/icons-react';
+import { theme, cssVariablesResolver } from './theme';
 import { useSettingsStore } from './stores/settingsStore';
 import { useChannelStore } from './stores/channelStore';
 import { usePlayerStore } from './stores/playerStore';
-import { ChannelList } from './components/ChannelList';
-import { SettingsModal } from './components/SettingsModal';
-import { NowPlayingPanel } from './components/NowPlayingPanel';
+import { useLibraryStore } from './stores/libraryStore';
 import { setMediaMetadata } from './lib/mediaSession';
+import { TransportBar, type BarMode } from './components/TransportBar';
+import { ChannelModal } from './components/ChannelModal';
+import { Home } from './pages/Home';
+import { Channels } from './pages/Channels';
+import { Recent } from './pages/Recent';
+import { Favorites } from './pages/Favorites';
+import { Settings } from './pages/Settings';
 
-function AppShellContent() {
-  const { settings, loaded, load } = useSettingsStore();
-  const { channels, status, error, fetchChannels, pollNowPlaying, nowPlaying } = useChannelStore();
-  const { currentChannel, selectChannel, initEventListener } = usePlayerStore();
-  const [settingsOpened, setSettingsOpened] = useState(false);
+type Page = 'home' | 'channels' | 'recent' | 'favorites' | 'settings';
+
+const NAV_ITEMS: { page: Page; label: string; icon: typeof IconHome2 }[] = [
+  { page: 'home', label: 'Home', icon: IconHome2 },
+  { page: 'channels', label: 'Channels', icon: IconApps },
+  { page: 'recent', label: 'Recent', icon: IconHistory },
+  { page: 'favorites', label: 'Favorites', icon: IconStar },
+];
+
+const COMPACT_BREAKPOINT = 900;
+const CARD_WIDTH = 1180;
+const CARD_HEIGHT = 760;
+/** Half of the expanded bar's footprint - how far the card's bottom edge sits above the window's bottom, so the bar can overlap it. */
+const BAR_OVERLAP = 50;
+const EXPANDED_BAR_SIZE = { width: 900, height: 100 };
+const COLLAPSED_BAR_SIZE = { width: 300, height: 80 };
+const SCREEN_MARGIN = 28;
+
+/**
+ * One real OS window throughout. The "browser" is a rounded card absolutely
+ * positioned inside it; the transport bar is a second absolutely-positioned
+ * layer pinned to the window's bottom edge, overlapping the card by
+ * BAR_OVERLAP so it reads as floating on top of it (per the design spec),
+ * exactly like a single physical object rather than two windows that merely
+ * track each other.
+ */
+async function applyWindowState(browserOpen: boolean, barMode: BarMode) {
+  const win = getCurrentWebviewWindow();
+  const monitor = await primaryMonitor();
+  const scale = monitor?.scaleFactor ?? 1;
+
+  const target = browserOpen
+    ? { width: CARD_WIDTH, height: CARD_HEIGHT + BAR_OVERLAP, resizable: true, alwaysOnTop: false }
+    : barMode === 'expanded'
+      ? { ...EXPANDED_BAR_SIZE, resizable: false, alwaysOnTop: true }
+      : { ...COLLAPSED_BAR_SIZE, resizable: false, alwaysOnTop: true };
+
+  const width = Math.round(target.width * scale);
+  const height = Math.round(target.height * scale);
+
+  await win.setResizable(target.resizable);
+  await win.setAlwaysOnTop(target.alwaysOnTop);
+  await win.setSize(new PhysicalSize(width, height));
+
+  if (monitor) {
+    const x = monitor.position.x + (monitor.size.width - width) / 2;
+    const y = browserOpen
+      ? monitor.position.y + (monitor.size.height - height) / 2
+      : monitor.position.y + monitor.size.height - height - Math.round(SCREEN_MARGIN * scale);
+    await win.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
+  }
+}
+
+const titlebarBtnStyle: CSSProperties = {
+  width: 44,
+  height: 36,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: 'var(--app-dim)',
+};
+
+function navItemStyle(active: boolean, compact: boolean): CSSProperties {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '11px 12px',
+    borderRadius: 12,
+    cursor: 'pointer',
+    background: active ? 'var(--app-accent-soft)' : 'transparent',
+    color: active ? 'var(--app-text)' : 'var(--app-dim)',
+    font: active ? '600 14px "Sora", sans-serif' : '500 14px "Sora", sans-serif',
+    justifyContent: compact ? 'center' : 'flex-start',
+  };
+}
+
+function TitlebarButton({ onClick, label, children }: { onClick: () => void; label: string; children: ReactNode }) {
+  return (
+    <div onClick={onClick} role="button" aria-label={label} style={titlebarBtnStyle}>
+      {children}
+    </div>
+  );
+}
+
+function AppContent() {
+  const { settings, loaded: settingsLoaded, load: loadSettings } = useSettingsStore();
+  const {
+    channels,
+    channelMetadata,
+    nowPlaying,
+    fetchChannels,
+    pollNowPlaying,
+    fetchChannelMetadata,
+  } = useChannelStore();
+  const { status: playerStatus, currentChannel, volume, selectChannel, play, stop, setVolume, initEventListener } =
+    usePlayerStore();
+  const { loaded: libraryLoaded, load: loadLibrary, recordPlay } = useLibraryStore();
+
+  const [browserOpen, setBrowserOpen] = useState(true);
+  const [barMode, setBarMode] = useState<BarMode>('expanded');
+  const [page, setPage] = useState<Page>('home');
+  const [modalStreamId, setModalStreamId] = useState<number | null>(null);
+  const [compact, setCompact] = useState(false);
 
   useEffect(() => {
-    load();
+    loadSettings();
+    loadLibrary();
     initEventListener();
-  }, [load, initEventListener]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    if (loaded) {
+    if (settingsLoaded) {
       usePlayerStore.setState({ volume: settings.defaultVolume });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
+  }, [settingsLoaded]);
 
   useEffect(() => {
-    if (loaded && settings.baseUrl && settings.username && settings.categoryId) {
+    if (settingsLoaded && settings.baseUrl && settings.username && settings.categoryId) {
       fetchChannels(
         { baseUrl: settings.baseUrl, username: settings.username, password: settings.password },
         settings.categoryId,
       );
     }
-  }, [loaded, settings.baseUrl, settings.username, settings.password, settings.categoryId, fetchChannels]);
+  }, [settingsLoaded, settings.baseUrl, settings.username, settings.password, settings.categoryId, fetchChannels]);
 
   useEffect(() => {
-    if (!loaded || !settings.stellarApiKey || channels.length === 0) return;
+    if (!settingsLoaded || !settings.stellarApiKey || channels.length === 0) return;
     pollNowPlaying(settings.stellarApiKey);
-    const id = setInterval(
-      () => pollNowPlaying(settings.stellarApiKey),
-      settings.pollIntervalSec * 1000,
-    );
+    const id = setInterval(() => pollNowPlaying(settings.stellarApiKey), settings.pollIntervalSec * 1000);
     return () => clearInterval(id);
-  }, [loaded, settings.stellarApiKey, settings.pollIntervalSec, channels, pollNowPlaying]);
+  }, [settingsLoaded, settings.stellarApiKey, settings.pollIntervalSec, channels, pollNowPlaying]);
+
+  useEffect(() => {
+    if (channels.length > 0) fetchChannelMetadata();
+  }, [channels, fetchChannelMetadata]);
 
   const currentNowPlaying = currentChannel ? nowPlaying.get(currentChannel.stream_id) : undefined;
 
@@ -61,50 +174,166 @@ function AppShellContent() {
     }
   }, [currentChannel, currentNowPlaying]);
 
+  useEffect(() => {
+    void applyWindowState(browserOpen, barMode);
+  }, [browserOpen, barMode]);
+
+  useEffect(() => {
+    function handleResize() {
+      setCompact(window.innerWidth < COMPACT_BREAKPOINT);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  function handlePlus() {
+    setBrowserOpen(true);
+    setBarMode('expanded');
+  }
+
+  function handleMinus() {
+    if (browserOpen) {
+      setBrowserOpen(false);
+    } else if (barMode === 'expanded') {
+      setBarMode('collapsed');
+    }
+  }
+
+  function handleSelectChannel(streamId: number) {
+    const channel = channels.find((c) => c.stream_id === streamId);
+    if (!channel) return;
+    selectChannel(
+      channel,
+      { baseUrl: settings.baseUrl, username: settings.username, password: settings.password },
+      settings.streamExtension,
+    );
+    if (libraryLoaded) recordPlay(channel.stream_id);
+    setModalStreamId(streamId);
+  }
+
+  const modalChannel = modalStreamId != null ? channels.find((c) => c.stream_id === modalStreamId) : undefined;
+  const win = getCurrentWebviewWindow();
+
   return (
-    <AppShell header={{ height: 56 }} navbar={{ width: 320, breakpoint: 'sm' }} padding="md">
-      <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <Title order={3}>Pulsar</Title>
-          <ActionIcon variant="subtle" onClick={() => setSettingsOpened(true)} aria-label="Settings">
-            ⚙
-          </ActionIcon>
-        </Group>
-      </AppShell.Header>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {browserOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: BAR_OVERLAP,
+            borderRadius: 26,
+            overflow: 'hidden',
+            border: '1px solid var(--app-border)',
+            boxShadow: 'var(--app-shadow-card)',
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--app-bg2)',
+          }}
+        >
+          <div
+            data-tauri-drag-region
+            style={{ height: 36, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flex: 'none' }}
+          >
+            <TitlebarButton label="Minimize" onClick={() => win.minimize()}>
+              <IconMinus size={14} />
+            </TitlebarButton>
+            <TitlebarButton label="Maximize" onClick={() => win.toggleMaximize()}>
+              <IconSquare size={12} />
+            </TitlebarButton>
+            <TitlebarButton label="Close browser" onClick={handleMinus}>
+              <IconX size={14} />
+            </TitlebarButton>
+          </div>
 
-      <AppShell.Navbar p="md">
-        <Text fw={600} mb="sm">
-          {settings.categoryName ?? 'Channels'}
-        </Text>
-        <ChannelList
-          channels={channels}
-          status={status}
-          error={error}
-          activeStreamId={currentChannel?.stream_id ?? null}
-          nowPlaying={nowPlaying}
-          onSelect={(channel) =>
-            selectChannel(
-              channel,
-              { baseUrl: settings.baseUrl, username: settings.username, password: settings.password },
-              settings.streamExtension,
-            )
-          }
+          <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+            <div
+              style={{
+                flex: 'none',
+                width: compact ? 68 : 220,
+                background: 'rgba(255,255,255,.045)',
+                borderRight: '1px solid var(--app-border)',
+                padding: '0 16px 26px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+              }}
+            >
+              {!compact && <div style={{ font: '700 20px "Space Grotesk", sans-serif', padding: '0 8px 22px' }}>Pulsar</div>}
+              {compact && <div style={{ height: 22 }} />}
+              {NAV_ITEMS.map(({ page: p, label, icon: Icon }) => (
+                <div key={p} onClick={() => setPage(p)} role="button" style={navItemStyle(page === p, compact)}>
+                  <Icon size={17} />
+                  {!compact && label}
+                </div>
+              ))}
+              <div style={{ flex: 1 }} />
+              <div onClick={() => setPage('settings')} role="button" style={navItemStyle(page === 'settings', compact)}>
+                <IconSettings size={17} />
+                {!compact && 'Settings'}
+              </div>
+            </div>
+
+            <div
+              style={{
+                flex: 1,
+                background: 'radial-gradient(circle at 30% 0%, var(--app-accent-soft), transparent 55%), var(--app-bg2)',
+                padding: '28px 32px',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                color: 'var(--app-text)',
+              }}
+            >
+              {page === 'home' && <Home onSelectChannel={handleSelectChannel} />}
+              {page === 'channels' && <Channels onSelectChannel={handleSelectChannel} />}
+              {page === 'recent' && <Recent onSelectChannel={handleSelectChannel} />}
+              {page === 'favorites' && <Favorites onSelectChannel={handleSelectChannel} />}
+              {page === 'settings' && <Settings />}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ position: 'absolute', left: '50%', bottom: 0, transform: 'translateX(-50%)', zIndex: 10 }}>
+        <TransportBar
+          mode={barMode}
+          status={playerStatus}
+          currentChannel={currentChannel}
+          nowPlaying={currentNowPlaying}
+          volume={volume}
+          onPlus={handlePlus}
+          onMinus={handleMinus}
+          onPlayStop={() => (playerStatus === 'playing' || playerStatus === 'loading' ? stop() : play())}
+          onVolumeChange={setVolume}
         />
-      </AppShell.Navbar>
+      </div>
 
-      <AppShell.Main>
-        <NowPlayingPanel nowPlayingEntry={currentNowPlaying} />
-      </AppShell.Main>
-
-      <SettingsModal opened={settingsOpened} onClose={() => setSettingsOpened(false)} />
-    </AppShell>
+      {modalChannel && (
+        <ChannelModal
+          channel={modalChannel}
+          metadata={channelMetadata.get(modalChannel.stream_id)}
+          apiKey={settings.stellarApiKey}
+          onClose={() => setModalStreamId(null)}
+        />
+      )}
+    </div>
   );
 }
 
 function App() {
+  const themeMode = useLibraryStore((s) => s.themeMode);
+
+  useEffect(() => {
+    document.body.style.background = 'transparent';
+  }, []);
+
   return (
-    <MantineProvider defaultColorScheme="dark">
-      <AppShellContent />
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} forceColorScheme={themeMode}>
+      <AppContent />
     </MantineProvider>
   );
 }

@@ -1,7 +1,9 @@
 import type { XtreamChannel } from './xtream';
 
+export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'stopped' | 'error';
+
 export interface PlayerState {
-  status: 'idle' | 'loading' | 'playing' | 'stopped' | 'error';
+  status: PlayerStatus;
   currentChannel: XtreamChannel | null;
   volume: number;
   bitrateKbps: number | null;

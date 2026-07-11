@@ -4,3 +4,111 @@ body,
   margin: 0;
   height: 100%;
 }
+
+@keyframes eqbar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes eqbarSlow {
+  0%,
+  100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(0.85);
+  }
+}
+
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes softpulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pulsar-starfield {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pulsar-starfield::before,
+.pulsar-starfield::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(10px);
+  animation: floaty 16s ease-in-out infinite;
+}
+
+.pulsar-starfield::before {
+  top: -260px;
+  left: -200px;
+  width: 640px;
+  height: 640px;
+  background: radial-gradient(circle at 35% 35%, rgba(139, 107, 255, 0.5), rgba(139, 107, 255, 0) 70%);
+}
+
+.pulsar-starfield::after {
+  top: 420px;
+  right: -260px;
+  width: 560px;
+  height: 560px;
+  background: radial-gradient(circle at 60% 40%, rgba(69, 224, 216, 0.32), rgba(69, 224, 216, 0) 70%);
+  animation-duration: 18s;
+  animation-delay: 2s;
+}
+
+.pulsar-starfield-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(1px 1px at 20px 30px, rgba(255, 255, 255, 0.5) 1px, transparent 0),
+    radial-gradient(1px 1px at 120px 90px, rgba(255, 255, 255, 0.35) 1px, transparent 0),
+    radial-gradient(1px 1px at 260px 200px, rgba(255, 255, 255, 0.4) 1px, transparent 0),
+    radial-gradient(1px 1px at 340px 60px, rgba(255, 255, 255, 0.3) 1px, transparent 0),
+    radial-gradient(1px 1px at 60px 260px, rgba(255, 255, 255, 0.4) 1px, transparent 0);
+  background-size: 400px 400px;
+  background-repeat: repeat;
+  opacity: 0.5;
+}
+
+[data-mantine-color-scheme='light'] .pulsar-starfield-dots {
+  opacity: 0;
+}
+
+.pulsar-glass {
+  background: var(--app-glass-bg);
+  border: 1px solid var(--app-border);
+  backdrop-filter: blur(24px);
+  box-shadow: var(--app-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
