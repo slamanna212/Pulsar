@@ -2,6 +2,35 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "setup: install npm dependencies",
+      "type": "shell",
+      "command": "npm install",
+      "problemMatcher": []
+    },
+    {
+      "label": "setup: fetch cargo dependencies (src-tauri)",
+      "type": "shell",
+      "command": "cargo fetch",
+      "options": { "cwd": "${workspaceFolder}/src-tauri" },
+      "problemMatcher": []
+    },
+    {
+      "label": "setup: verify mpv is on PATH",
+      "type": "shell",
+      "command": "mpv --version || (echo 'mpv not found on PATH — install it via your package manager (e.g. sudo apt install mpv) before running the app' && exit 1)",
+      "problemMatcher": []
+    },
+    {
+      "label": "Setup Project (fresh clone)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "setup: install npm dependencies",
+        "setup: fetch cargo dependencies (src-tauri)",
+        "setup: verify mpv is on PATH"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "dev",
       "type": "shell",
       "command": "npm run tauri dev",
