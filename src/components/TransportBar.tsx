@@ -13,6 +13,7 @@ interface TransportBarProps {
   status: PlayerStatus;
   currentChannel: XtreamChannel | null;
   nowPlaying?: StellarStation;
+  errorMessage?: string | null;
   volume: number;
   onPlus: () => void;
   onMinus: () => void;
@@ -234,10 +235,12 @@ function BarContent({
   status,
   currentChannel,
   nowPlaying,
+  errorMessage,
 }: {
   status: PlayerStatus;
   currentChannel: XtreamChannel | null;
   nowPlaying?: StellarStation;
+  errorMessage?: string | null;
 }) {
   if (!currentChannel) {
     return (
@@ -310,7 +313,7 @@ function BarContent({
           !
         </div>
         <Text size="sm" c="red.4" style={{ flex: '1 1 auto', minWidth: 0 }}>
-          Playback error — tap play to retry
+          {errorMessage || 'Playback error — tap play to retry'}
         </Text>
       </>
     );
@@ -367,10 +370,12 @@ function CollapsedInfo({
   status,
   currentChannel,
   nowPlaying,
+  errorMessage,
 }: {
   status: PlayerStatus;
   currentChannel: XtreamChannel | null;
   nowPlaying?: StellarStation;
+  errorMessage?: string | null;
 }) {
   if (!currentChannel) {
     return (
@@ -384,7 +389,7 @@ function CollapsedInfo({
   const subtitle = status === 'loading' ? 'Connecting…' : nowPlaying?.artist;
 
   return (
-    <div style={{ flex: 'none', maxWidth: 150, minWidth: 0 }}>
+    <div style={{ flex: 'none', maxWidth: 150, minWidth: 0 }} title={status === 'error' ? errorMessage ?? undefined : undefined}>
       <div
         style={{
           font: '700 12px "Space Grotesk", sans-serif',
@@ -418,6 +423,7 @@ export function TransportBar({
   status,
   currentChannel,
   nowPlaying,
+  errorMessage,
   volume,
   onPlus,
   onMinus,
@@ -445,7 +451,7 @@ export function TransportBar({
         <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--app-panel2)', flex: 'none', overflow: 'hidden' }}>
           {artwork && <img src={artwork} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
         </div>
-        <CollapsedInfo status={status} currentChannel={currentChannel} nowPlaying={nowPlaying} />
+        <CollapsedInfo status={status} currentChannel={currentChannel} nowPlaying={nowPlaying} errorMessage={errorMessage} />
         <Waveform active={status === 'playing'} bands={4} size="sm" />
       </div>
     );
@@ -466,7 +472,7 @@ export function TransportBar({
     >
       <PlusMinus onPlus={onPlus} onMinus={onMinus} />
       <PlayStopButton status={status} onClick={onPlayStop} disabled={!currentChannel} />
-      <BarContent status={status} currentChannel={currentChannel} nowPlaying={nowPlaying} />
+      <BarContent status={status} currentChannel={currentChannel} nowPlaying={nowPlaying} errorMessage={errorMessage} />
       <VolumeControl volume={volume} onChange={onVolumeChange} />
     </div>
   );

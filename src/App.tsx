@@ -114,8 +114,17 @@ function AppContent() {
     pollNowPlaying,
     fetchChannelMetadata,
   } = useChannelStore();
-  const { status: playerStatus, currentChannel, volume, selectChannel, play, stop, setVolume, initEventListener } =
-    usePlayerStore();
+  const {
+    status: playerStatus,
+    currentChannel,
+    volume,
+    errorMessage,
+    selectChannel,
+    play,
+    stop,
+    setVolume,
+    initEventListener,
+  } = usePlayerStore();
   const { loaded: libraryLoaded, load: loadLibrary, recordPlay, favorites, toggleFavorite } = useLibraryStore();
 
   const [browserOpen, setBrowserOpen] = useState(true);
@@ -233,15 +242,19 @@ function AppContent() {
     setModalStreamId(streamId);
   }
 
-  function handlePlayChannel(streamId: number) {
+  async function handlePlayChannel(streamId: number) {
     const channel = channels.find((c) => c.stream_id === streamId);
     if (!channel) return;
-    selectChannel(
-      channel,
-      { baseUrl: settings.baseUrl, username: settings.username, password: settings.password },
-      settings.streamExtension,
-    );
-    if (libraryLoaded) recordPlay(channel.stream_id);
+    try {
+      await selectChannel(
+        channel,
+        { baseUrl: settings.baseUrl, username: settings.username, password: settings.password },
+        settings.streamExtension,
+      );
+      if (libraryLoaded) recordPlay(channel.stream_id);
+    } catch (err) {
+      console.error('playback failed', err);
+    }
   }
 
   const modalChannel = modalStreamId != null ? channels.find((c) => c.stream_id === modalStreamId) : undefined;
@@ -339,7 +352,11 @@ function AppContent() {
           volume={volume}
           onPlus={handlePlus}
           onMinus={handleMinus}
-          onPlayStop={() => (playerStatus === 'playing' || playerStatus === 'loading' ? stop() : play())}
+          errorMessage={errorMessage}
+          onPlayStop={() => {
+            const action = playerStatus === 'playing' || playerStatus === 'loading' ? stop() : play();
+            action.catch((err) => console.error('play/stop failed', err));
+          }}
           onVolumeChange={setVolume}
         />
       </div>

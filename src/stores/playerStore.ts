@@ -48,7 +48,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
   async function connect(url: string, streamId: number) {
     stopFallbackPolling();
     lastStreamUrl = url;
-    set({ status: 'loading', bitrateKbps: null });
+    set({ status: 'loading', bitrateKbps: null, errorMessage: null });
     try {
       await loadUrl(url);
       await mpvSetVolume(get().volume);
@@ -66,7 +66,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
         }, 2500);
       }, 3000);
     } catch (err) {
-      set({ status: 'error' });
+      const message = err instanceof Error ? err.message : String(err);
+      set({ status: 'error', errorMessage: message });
       throw err;
     }
   }
@@ -76,6 +77,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     currentChannel: null,
     volume: 70,
     bitrateKbps: null,
+    errorMessage: null,
 
     initEventListener() {
       if (listening) return;

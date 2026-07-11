@@ -8,7 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "fetch:mpv:windows": "node scripts/fetch-mpv.mjs windows",
+    "fetch:mpv:appimage": "node scripts/fetch-mpv.mjs appimage",
+    "tauri:build:windows": "npm run fetch:mpv:windows && tauri build",
+    "tauri:build:linux": "tauri build --bundles deb,rpm && npm run fetch:mpv:appimage && tauri build --bundles appimage --config src-tauri/tauri.appimage.conf.json",
+    "tauri:build:mac": "tauri build"
   },
   "dependencies": {
     "@fontsource/sora": "^5.2.8",
@@ -30,6 +35,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "7zip-min": "^3.0.1",
     "oxlint": "^1.71.0",
     "postcss": "^8.5.16",
     "postcss-preset-mantine": "^1.18.0",

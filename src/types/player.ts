@@ -7,4 +7,5 @@ export interface PlayerState {
   currentChannel: XtreamChannel | null;
   volume: number;
   bitrateKbps: number | null;
+  errorMessage: string | null;
 }

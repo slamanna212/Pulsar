@@ -1,7 +1,9 @@
 use serde_json::{json, Value};
+use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -10,6 +12,8 @@ use tokio::sync::Mutex;
 const IPC_PATH: &str = "/tmp/apogee-mpv.sock";
 #[cfg(windows)]
 const IPC_PATH: &str = r"\\.\pipe\apogee-mpv";
+
+const STDERR_TAIL_LINES: usize = 40;
 
 trait AsyncReadWrite: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> AsyncReadWrite for T {}
@@ -22,6 +26,38 @@ struct Inner {
 #[derive(Default)]
 pub struct MpvState {
     inner: Arc<Mutex<Option<Inner>>>,
+    stderr_tail: Arc<Mutex<VecDeque<String>>>,
+}
+
+/// Prefers a bundled mpv (Windows, Linux AppImage) over PATH lookup (Linux
+/// deb/rpm, which declare mpv as a package dependency instead, and macOS,
+/// which has no bundled binary and relies on the user installing mpv via
+/// Homebrew) - see docs/milestone-0-findings.md and the plan this
+/// implements for why bundling isn't done on every platform.
+fn resolve_mpv_path(app: &AppHandle) -> String {
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let bundled: PathBuf = resource_dir.join(if cfg!(windows) {
+            "binaries/mpv.exe"
+        } else {
+            "binaries/mpv"
+        });
+        if bundled.exists() {
+            return bundled.to_string_lossy().into_owned();
+        }
+    }
+    "mpv".to_string()
+}
+
+async fn push_stderr_tail(tail: &Arc<Mutex<VecDeque<String>>>, line: String) {
+    let mut guard = tail.lock().await;
+    if guard.len() >= STDERR_TAIL_LINES {
+        guard.pop_front();
+    }
+    guard.push_back(line);
+}
+
+async fn stderr_tail_string(tail: &Arc<Mutex<VecDeque<String>>>) -> String {
+    tail.lock().await.iter().cloned().collect::<Vec<_>>().join(" | ")
 }
 
 /// Kills the mpv child process, if any, without needing an async context.
@@ -49,17 +85,24 @@ async fn connect_ipc(path: &str) -> std::io::Result<Box<dyn AsyncReadWrite>> {
     ))
 }
 
-fn spawn_mpv() -> std::io::Result<Child> {
-    Command::new("mpv")
-        .args([
-            "--no-video",
-            "--idle=yes",
-            &format!("--input-ipc-server={IPC_PATH}"),
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
+fn spawn_mpv(mpv_path: &str) -> std::io::Result<Child> {
+    let mut cmd = Command::new(mpv_path);
+    cmd.args([
+        "--no-video",
+        "--idle=yes",
+        &format!("--input-ipc-server={IPC_PATH}"),
+    ])
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .kill_on_drop(true);
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    cmd.spawn()
 }
 
 async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String> {
@@ -71,10 +114,35 @@ async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String>
     #[cfg(unix)]
     let _ = std::fs::remove_file(IPC_PATH);
 
-    let child = spawn_mpv().map_err(|e| format!("failed to spawn mpv: {e}"))?;
+    state.stderr_tail.lock().await.clear();
+
+    let mpv_path = resolve_mpv_path(app);
+    let mut child = spawn_mpv(&mpv_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "mpv not found - install it (macOS: `brew install mpv`; Linux: install the `mpv` package) and restart Apogee".to_string()
+        } else {
+            format!("failed to spawn mpv: {e}")
+        }
+    })?;
+
+    if let Some(stderr) = child.stderr.take() {
+        let tail = state.stderr_tail.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                log::warn!("mpv: {line}");
+                push_stderr_tail(&tail, line).await;
+            }
+        });
+    }
 
     let mut stream = None;
     for _ in 0..50 {
+        if let Ok(Some(status)) = child.try_wait() {
+            let tail = stderr_tail_string(&state.stderr_tail).await;
+            let suffix = if tail.is_empty() { String::new() } else { format!(" - {tail}") };
+            return Err(format!("mpv exited immediately (status: {status}){suffix}"));
+        }
         match connect_ipc(IPC_PATH).await {
             Ok(s) => {
                 stream = Some(s);
@@ -83,7 +151,15 @@ async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String>
             Err(_) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
         }
     }
-    let stream = stream.ok_or_else(|| "timed out connecting to mpv IPC".to_string())?;
+    let stream = match stream {
+        Some(s) => s,
+        None => {
+            let _ = child.start_kill();
+            let tail = stderr_tail_string(&state.stderr_tail).await;
+            let suffix = if tail.is_empty() { String::new() } else { format!(" - mpv output: {tail}") };
+            return Err(format!("timed out connecting to mpv IPC{suffix}"));
+        }
+    };
 
     let (read_half, write_half) = tokio::io::split(stream);
 

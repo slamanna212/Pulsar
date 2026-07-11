@@ -51,10 +51,17 @@ export function ChannelCard({ channel, metadata, isFavorite, onToggleFavorite, o
         aspectRatio: '1',
         borderRadius: 16,
         overflow: 'hidden',
+        boxShadow: hovered ? '0 8px 24px var(--app-accent-soft)' : 'none',
+        transition: 'box-shadow 150ms',
+      }}
+    >
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
         background,
         transform: hovered ? 'scale(1.03)' : 'scale(1)',
-        boxShadow: hovered ? '0 8px 24px var(--app-accent-soft)' : 'none',
-        transition: 'transform 150ms, box-shadow 150ms',
+        transition: 'transform 150ms',
       }}
     >
       {logoUrl && (
@@ -179,6 +186,7 @@ export function ChannelCard({ channel, metadata, isFavorite, onToggleFavorite, o
       >
         <IconPlayerPlayFilled size={16} />
       </div>
+    </div>
     </div>
     <div
       style={{

@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+// Downloads the mpv binaries bundled with Apogee so the app never depends on
+// a system-installed mpv on Windows or in the Linux AppImage build (the two
+// formats with no package-manager dependency mechanism). deb/rpm builds rely
+// on `mpv` being declared as a package dependency instead (see
+// src-tauri/tauri.conf.json's bundle.linux.deb/rpm.depends) and macOS relies
+// on the user installing it via Homebrew - neither needs anything from here.
+//
+// Run with: node scripts/fetch-mpv.mjs [windows|appimage|all]
+//
+// Windows: official shinchiro mpv build, distributed as a .7z archive via
+// SourceForge (linked from https://mpv.io/installation/). Extracted with the
+// `7zip-min` devDependency so no system 7z/7-Zip install is required.
+//
+// Linux (AppImage bundle only): mpv has no official static/portable Linux
+// build (see https://github.com/mpv-player/mpv/issues/4056). This uses the
+// community "anylinux" build from pkgforge-dev/mpv-AppImage, which is itself
+// a directly-runnable, dependency-free portable executable (built with
+// "sharun", no FUSE/extraction required) - so it's used as-is as our bundled
+// `mpv` binary, not unpacked.
+
+import {
+  createWriteStream,
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  chmodSync,
+  unlinkSync,
+  renameSync,
+  rmSync,
+} from 'node:fs';
+import { createHash } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import sevenzip from '7zip-min';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const BINARIES_DIR = join(__dirname, '..', 'src-tauri', 'binaries');
+
+const TARGETS = {
+  windows: {
+    url: 'https://sourceforge.net/projects/mpv-player-windows/files/release/mpv-0.41.0-x86_64.7z/download',
+    sha256: 'ef86fde0959d789d77a3ad7c3c2dca51c6999695363f493a6154f2c518634c0f',
+    outputName: 'mpv.exe',
+    archiveEntry: 'mpv.exe',
+  },
+  appimage: {
+    url: 'https://github.com/pkgforge-dev/mpv-AppImage/releases/download/v0.41.0%402026-07-01_1782914175/mpv-v0.41.0-anylinux-x86_64.AppImage',
+    sha256: '9ba489eb78c39fa4d5ef9cfaf9e80b92dcb9f69a05dd365d30255e6dca3c8fbd',
+    outputName: 'mpv',
+  },
+};
+
+async function download(url, destPath) {
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) throw new Error(`download failed: ${res.status} ${res.statusText} (${url})`);
+  await pipeline(Readable.fromWeb(res.body), createWriteStream(destPath));
+}
+
+async function verifiedFetch(name, target) {
+  const finalPath = join(BINARIES_DIR, target.outputName);
+  if (existsSync(finalPath)) {
+    console.log(`[fetch-mpv] ${name}: ${finalPath} already present, skipping`);
+    return;
+  }
+
+  mkdirSync(BINARIES_DIR, { recursive: true });
+  const downloadPath = join(BINARIES_DIR, `.download-${name}`);
+  console.log(`[fetch-mpv] ${name}: downloading ${target.url}`);
+  await download(target.url, downloadPath);
+
+  const actualHash = await new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    const stream = createReadStream(downloadPath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+
+  if (actualHash !== target.sha256) {
+    unlinkSync(downloadPath);
+    throw new Error(
+      `[fetch-mpv] ${name}: checksum mismatch (expected ${target.sha256}, got ${actualHash}) - refusing to use this file`,
+    );
+  }
+
+  if (target.archiveEntry) {
+    // Windows build ships as a .7z archive - extract just the binary we need.
+    const extractDir = join(BINARIES_DIR, `.extract-${name}`);
+    mkdirSync(extractDir, { recursive: true });
+    await new Promise((resolve, reject) => {
+      sevenzip.unpack(downloadPath, extractDir, (err) => (err ? reject(err) : resolve()));
+    });
+    renameSync(join(extractDir, target.archiveEntry), finalPath);
+    rmSync(extractDir, { recursive: true, force: true });
+    unlinkSync(downloadPath);
+  } else {
+    // Linux build is a directly-runnable portable executable - use as-is.
+    renameSync(downloadPath, finalPath);
+  }
+
+  chmodSync(finalPath, 0o755);
+  console.log(`[fetch-mpv] ${name}: wrote ${finalPath}`);
+}
+
+const requested = process.argv[2] ?? 'all';
+const names = requested === 'all' ? Object.keys(TARGETS) : [requested];
+
+for (const name of names) {
+  const target = TARGETS[name];
+  if (!target) {
+    console.error(`[fetch-mpv] unknown target "${name}" (expected one of: ${Object.keys(TARGETS).join(', ')}, all)`);
+    process.exit(1);
+  }
+  await verifiedFetch(name, target);
+}

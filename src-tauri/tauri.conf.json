@@ -41,6 +41,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "linux": {
+      "deb": {
+        "depends": ["mpv"]
+      },
+      "rpm": {
+        "depends": ["mpv"]
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
