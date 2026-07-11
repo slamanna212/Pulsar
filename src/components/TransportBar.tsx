@@ -363,6 +363,56 @@ function BarContent({
   );
 }
 
+function CollapsedInfo({
+  status,
+  currentChannel,
+  nowPlaying,
+}: {
+  status: PlayerStatus;
+  currentChannel: XtreamChannel | null;
+  nowPlaying?: StellarStation;
+}) {
+  if (!currentChannel) {
+    return (
+      <Text size="xs" c="dimmed" style={{ flex: 'none', maxWidth: 150, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+        Select a channel
+      </Text>
+    );
+  }
+
+  const title = status === 'error' ? 'Playback error' : nowPlaying?.title || currentChannel.name;
+  const subtitle = status === 'loading' ? 'Connecting…' : nowPlaying?.artist;
+
+  return (
+    <div style={{ flex: 'none', maxWidth: 150, minWidth: 0 }}>
+      <div
+        style={{
+          font: '700 12px "Space Grotesk", sans-serif',
+          color: status === 'error' ? '#ff8787' : 'var(--app-text)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {title}
+      </div>
+      {subtitle && (
+        <div
+          style={{
+            font: '400 10px "Sora", sans-serif',
+            color: 'var(--app-dim)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {subtitle}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TransportBar({
   mode,
   status,
@@ -395,6 +445,7 @@ export function TransportBar({
         <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--app-panel2)', flex: 'none', overflow: 'hidden' }}>
           {artwork && <img src={artwork} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
         </div>
+        <CollapsedInfo status={status} currentChannel={currentChannel} nowPlaying={nowPlaying} />
         <Waveform active={status === 'playing'} bands={4} size="sm" />
       </div>
     );

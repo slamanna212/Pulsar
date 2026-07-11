@@ -33,7 +33,7 @@ const CARD_HEIGHT = 760;
 /** Half of the expanded bar's footprint - how far the card's bottom edge sits above the window's bottom, so the bar can overlap it. */
 const BAR_OVERLAP = 50;
 const EXPANDED_BAR_SIZE = { width: 900, height: 100 };
-const COLLAPSED_BAR_SIZE = { width: 300, height: 80 };
+const COLLAPSED_BAR_SIZE = { width: 340, height: 80 };
 const SCREEN_MARGIN = 28;
 
 /**
@@ -214,8 +214,11 @@ function AppContent() {
   }, []);
 
   function handlePlus() {
-    setBrowserOpen(true);
-    setBarMode('expanded');
+    if (!browserOpen && barMode === 'collapsed') {
+      setBarMode('expanded');
+    } else if (!browserOpen && barMode === 'expanded') {
+      setBrowserOpen(true);
+    }
   }
 
   function handleMinus() {
@@ -273,7 +276,7 @@ function AppContent() {
             <TitlebarButton label="Maximize" onClick={() => win.toggleMaximize()}>
               <IconSquare size={12} />
             </TitlebarButton>
-            <TitlebarButton label="Close browser" onClick={handleMinus}>
+            <TitlebarButton label="Quit" onClick={() => win.close()}>
               <IconX size={14} />
             </TitlebarButton>
           </div>
