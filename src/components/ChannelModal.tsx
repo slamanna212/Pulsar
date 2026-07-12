@@ -123,7 +123,7 @@ export function ChannelModal({ channel, metadata, apiKey, isFavorite, onToggleFa
                     style={{
                       font: '700 11px "Space Grotesk", sans-serif',
                       background: 'var(--app-accent)',
-                      color: '#07060d',
+                      color: '#fff',
                       borderRadius: 999,
                       padding: '6px 14px',
                     }}

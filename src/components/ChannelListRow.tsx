@@ -1,5 +1,5 @@
 import { Text } from '@mantine/core';
-import { IconPlayerPlayFilled, IconStar, IconStarFilled } from '@tabler/icons-react';
+import { IconInfoCircle, IconStar, IconStarFilled } from '@tabler/icons-react';
 import type { XtreamChannel } from '../types/xtream';
 import type { StellarChannel, StellarStation } from '../types/stellarTunerLog';
 import { CutTypeBadge } from './CutTypeBadge';
@@ -10,7 +10,7 @@ interface ChannelListRowProps {
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onClick: () => void;
-  onPlay: () => void;
+  onInfo: () => void;
   nowPlaying?: StellarStation;
 }
 
@@ -20,7 +20,7 @@ export function ChannelListRow({
   isFavorite,
   onToggleFavorite,
   onClick,
-  onPlay,
+  onInfo,
   nowPlaying,
 }: ChannelListRowProps) {
   const name = metadata?.marketing_name || channel.name;
@@ -133,22 +133,21 @@ export function ChannelListRow({
         <div
           onClick={(e) => {
             e.stopPropagation();
-            onPlay();
+            onInfo();
           }}
           role="button"
-          aria-label={`Play ${name}`}
+          aria-label={`Info for ${name}`}
           style={{
-            width: 42,
-            height: 42,
+            width: 32,
+            height: 32,
             borderRadius: '50%',
-            background: 'var(--app-accent)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#07060d',
+            color: 'var(--app-dim)',
           }}
         >
-          <IconPlayerPlayFilled size={20} />
+          <IconInfoCircle size={20} />
         </div>
       </div>
     </div>

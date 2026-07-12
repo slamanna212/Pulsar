@@ -94,13 +94,13 @@ function PlayStopButton({
             width: size * 0.4,
             height: size * 0.4,
             borderRadius: '50%',
-            border: '3px solid rgba(7,6,13,.3)',
-            borderTopColor: '#07060d',
+            border: '3px solid var(--app-accent-soft)',
+            borderTopColor: 'var(--app-bg)',
             animation: 'spin 0.8s linear infinite',
           }}
         />
       ) : isConnected ? (
-        <div style={{ width: size * 0.32, height: size * 0.32, background: '#07060d', borderRadius: 3 }} />
+        <div style={{ width: size * 0.32, height: size * 0.32, background: 'var(--app-bg)', borderRadius: 3 }} />
       ) : (
         <div
           style={{
@@ -108,7 +108,7 @@ function PlayStopButton({
             height: 0,
             borderTop: `${size * 0.17}px solid transparent`,
             borderBottom: `${size * 0.17}px solid transparent`,
-            borderLeft: `${size * 0.27}px solid #07060d`,
+            borderLeft: `${size * 0.27}px solid var(--app-bg)`,
             marginLeft: 4,
           }}
         />

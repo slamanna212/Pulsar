@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { IconPlayerPlayFilled, IconStar, IconStarFilled } from '@tabler/icons-react';
+import { IconInfoSmall, IconStar, IconStarFilled } from '@tabler/icons-react';
 import type { XtreamChannel } from '../types/xtream';
 import type { StellarChannel } from '../types/stellarTunerLog';
 
@@ -27,10 +27,10 @@ interface ChannelCardProps {
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onClick: () => void;
-  onPlay: () => void;
+  onInfo: () => void;
 }
 
-export function ChannelCard({ channel, metadata, isFavorite, onToggleFavorite, onClick, onPlay }: ChannelCardProps) {
+export function ChannelCard({ channel, metadata, isFavorite, onToggleFavorite, onClick, onInfo }: ChannelCardProps) {
   const [hovered, setHovered] = useState(false);
   const name = metadata?.marketing_name || channel.name;
   const number = metadata?.channel_number ?? channel.num;
@@ -162,29 +162,29 @@ export function ChannelCard({ channel, metadata, isFavorite, onToggleFavorite, o
       <div
         onClick={(e) => {
           e.stopPropagation();
-          onPlay();
+          onInfo();
         }}
         role="button"
-        aria-label={`Play ${name}`}
+        aria-label={`Info for ${name}`}
         style={{
           position: 'absolute',
           bottom: 10,
           right: 10,
-          width: 40,
-          height: 40,
+          width: 24,
+          height: 24,
           borderRadius: '50%',
           background: 'var(--app-accent)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#07060d',
+          color: 'var(--app-bg)',
           boxShadow: '0 4px 12px rgba(0,0,0,.35)',
           transform: hovered ? 'scale(1.08)' : 'scale(1)',
           transition: 'transform 150ms',
           zIndex: 1,
         }}
       >
-        <IconPlayerPlayFilled size={18} />
+        <IconInfoSmall size={48} stroke={2.5} />
       </div>
     </div>
     </div>
