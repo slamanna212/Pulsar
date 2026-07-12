@@ -1,8 +1,9 @@
-import { Text } from '@mantine/core';
+import { Text, useComputedColorScheme } from '@mantine/core';
 import { IconInfoCircle, IconStar, IconStarFilled } from '@tabler/icons-react';
 import type { XtreamChannel } from '../types/xtream';
 import type { StellarChannel, StellarStation } from '../types/stellarTunerLog';
 import { CutTypeBadge } from './CutTypeBadge';
+import { pickChannelLogoUrl } from '../lib/channelLogo';
 
 interface ChannelListRowProps {
   channel: XtreamChannel;
@@ -23,9 +24,10 @@ export function ChannelListRow({
   onInfo,
   nowPlaying,
 }: ChannelListRowProps) {
+  const colorScheme = useComputedColorScheme('dark');
   const name = metadata?.marketing_name || channel.name;
   const number = metadata?.channel_number ?? channel.num;
-  const logoUrl = metadata?.logos?.color_dark_square?.url || channel.stream_icon;
+  const logoUrl = pickChannelLogoUrl(metadata?.logos, colorScheme) || channel.stream_icon;
   const artworkUrl = nowPlaying?.artwork_url;
   const trackTitle = nowPlaying?.title;
   const trackArtist = nowPlaying?.artist;
