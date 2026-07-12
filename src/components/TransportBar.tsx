@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Popover, Text } from '@mantine/core';
+import { Modal, Popover, Text } from '@mantine/core';
+import { IconVolume, IconVolume2 } from '@tabler/icons-react';
 import type { XtreamChannel } from '../types/xtream';
 import type { StellarStation } from '../types/stellarTunerLog';
 import type { PlayerStatus } from '../types/player';
@@ -213,9 +214,10 @@ function VolumeControl({ volume, onChange }: { volume: number; onChange: (v: num
             fontSize: 16,
             flex: 'none',
             cursor: 'pointer',
+            color: 'var(--app-text)',
           }}
         >
-          🔊
+          <IconVolume size={18} />
         </div>
       </Popover.Target>
       <Popover.Dropdown className="apogee-glass" style={{ borderRadius: 20, padding: '14px 0' }}>
@@ -224,7 +226,7 @@ function VolumeControl({ volume, onChange }: { volume: number; onChange: (v: num
             {volume}%
           </Text>
           <VerticalVolumeSlider volume={volume} onChange={onChange} />
-          <Text size="sm">🔊</Text>
+          <IconVolume2 size={12} style={{ color: 'var(--app-dim)' }} />
         </div>
       </Popover.Dropdown>
     </Popover>
@@ -236,17 +238,19 @@ function BarContent({
   currentChannel,
   nowPlaying,
   errorMessage,
+  onArtworkClick,
 }: {
   status: PlayerStatus;
   currentChannel: XtreamChannel | null;
   nowPlaying?: StellarStation;
   errorMessage?: string | null;
+  onArtworkClick: (artworkUrl: string) => void;
 }) {
   if (!currentChannel) {
     return (
       <>
         <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--app-panel2)', flex: 'none' }} />
-        <Text size="sm" c="dimmed" style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <Text data-tauri-drag-region size="sm" c="dimmed" style={{ flex: '1 1 auto', minWidth: 0 }}>
           Select a channel to start listening
         </Text>
       </>
@@ -265,8 +269,9 @@ function BarContent({
         ) : (
           <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--app-panel2)', flex: 'none' }} />
         )}
-        <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <div data-tauri-drag-region style={{ flex: '1 1 auto', minWidth: 0 }}>
           <div
+            data-tauri-drag-region
             style={{
               font: '700 16px "Space Grotesk", sans-serif',
               color: 'var(--app-text)',
@@ -278,6 +283,7 @@ function BarContent({
             {currentChannel.name}
           </div>
           <div
+            data-tauri-drag-region
             style={{
               font: '400 13px "Sora", sans-serif',
               color: 'var(--app-dim)',
@@ -312,7 +318,7 @@ function BarContent({
         >
           !
         </div>
-        <Text size="sm" c="red.4" style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <Text data-tauri-drag-region size="sm" c="red.4" style={{ flex: '1 1 auto', minWidth: 0 }}>
           {errorMessage || 'Playback error — tap play to retry'}
         </Text>
       </>
@@ -329,13 +335,15 @@ function BarContent({
         <img
           src={artwork}
           alt=""
-          style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flex: 'none', background: 'var(--app-panel2)' }}
+          onClick={() => onArtworkClick(artwork)}
+          style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flex: 'none', background: 'var(--app-panel2)', cursor: 'pointer' }}
         />
       ) : (
         <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--app-panel2)', flex: 'none' }} />
       )}
-      <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+      <div data-tauri-drag-region style={{ flex: '1 1 auto', minWidth: 0 }}>
         <div
+          data-tauri-drag-region
           style={{
             font: '700 16px "Space Grotesk", sans-serif',
             color: 'var(--app-text)',
@@ -348,6 +356,7 @@ function BarContent({
         </div>
         {subtitleParts.length > 0 && (
           <div
+            data-tauri-drag-region
             style={{
               font: '400 13px "Sora", sans-serif',
               color: 'var(--app-dim)',
@@ -379,7 +388,7 @@ function CollapsedInfo({
 }) {
   if (!currentChannel) {
     return (
-      <Text size="xs" c="dimmed" style={{ flex: 'none', maxWidth: 150, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+      <Text data-tauri-drag-region size="xs" c="dimmed" style={{ flex: 'none', maxWidth: 150, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
         Select a channel
       </Text>
     );
@@ -389,8 +398,9 @@ function CollapsedInfo({
   const subtitle = status === 'loading' ? 'Connecting…' : nowPlaying?.artist;
 
   return (
-    <div style={{ flex: 'none', maxWidth: 150, minWidth: 0 }} title={status === 'error' ? errorMessage ?? undefined : undefined}>
+    <div data-tauri-drag-region style={{ flex: 'none', maxWidth: 150, minWidth: 0 }} title={status === 'error' ? errorMessage ?? undefined : undefined}>
       <div
+        data-tauri-drag-region
         style={{
           font: '700 12px "Space Grotesk", sans-serif',
           color: status === 'error' ? '#ff8787' : 'var(--app-text)',
@@ -403,6 +413,7 @@ function CollapsedInfo({
       </div>
       {subtitle && (
         <div
+          data-tauri-drag-region
           style={{
             font: '400 10px "Sora", sans-serif',
             color: 'var(--app-dim)',
@@ -430,50 +441,93 @@ export function TransportBar({
   onPlayStop,
   onVolumeChange,
 }: TransportBarProps) {
+  const [expandedArtwork, setExpandedArtwork] = useState<string | null>(null);
+
+  const artworkModal = (
+    <Modal
+      opened={expandedArtwork !== null}
+      onClose={() => setExpandedArtwork(null)}
+      withCloseButton={false}
+      size="auto"
+      radius={26}
+      padding={0}
+      centered
+    >
+      {expandedArtwork && (
+        <img
+          src={expandedArtwork}
+          alt=""
+          style={{ display: 'block', width: 500, height: 500, maxWidth: '100%', objectFit: 'contain', borderRadius: 26 }}
+        />
+      )}
+    </Modal>
+  );
+
   if (mode === 'collapsed') {
     const artwork = nowPlaying?.artwork_url || currentChannel?.stream_icon;
     return (
-      <div
-        className="apogee-glass"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          height: 56,
-          padding: '0 10px',
-          borderRadius: 999,
-          width: 'fit-content',
-          margin: '12px auto',
-        }}
-      >
-        <PlusMinus onPlus={onPlus} onMinus={onMinus} compact />
-        <PlayStopButton status={status} onClick={onPlayStop} disabled={!currentChannel} size={36} />
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--app-panel2)', flex: 'none', overflow: 'hidden' }}>
-          {artwork && <img src={artwork} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+      <>
+        {artworkModal}
+        <div
+          className="apogee-glass"
+          data-tauri-drag-region
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            height: 56,
+            padding: '0 10px',
+            borderRadius: 999,
+            width: 'fit-content',
+            margin: '12px auto',
+          }}
+        >
+          <PlusMinus onPlus={onPlus} onMinus={onMinus} compact />
+          <PlayStopButton status={status} onClick={onPlayStop} disabled={!currentChannel} size={36} />
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--app-panel2)', flex: 'none', overflow: 'hidden' }}>
+            {artwork && (
+              <img
+                src={artwork}
+                alt=""
+                onClick={() => setExpandedArtwork(artwork)}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+              />
+            )}
+          </div>
+          <CollapsedInfo status={status} currentChannel={currentChannel} nowPlaying={nowPlaying} errorMessage={errorMessage} />
+          <Waveform active={status === 'playing'} bands={4} size="sm" />
         </div>
-        <CollapsedInfo status={status} currentChannel={currentChannel} nowPlaying={nowPlaying} errorMessage={errorMessage} />
-        <Waveform active={status === 'playing'} bands={4} size="sm" />
-      </div>
+      </>
     );
   }
 
   return (
-    <div
-      className="apogee-glass"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        height: 84,
-        padding: '0 14px 0 10px',
-        borderRadius: 999,
-        margin: 8,
-      }}
-    >
-      <PlusMinus onPlus={onPlus} onMinus={onMinus} />
-      <PlayStopButton status={status} onClick={onPlayStop} disabled={!currentChannel} />
-      <BarContent status={status} currentChannel={currentChannel} nowPlaying={nowPlaying} errorMessage={errorMessage} />
-      <VolumeControl volume={volume} onChange={onVolumeChange} />
-    </div>
+    <>
+      {artworkModal}
+      <div
+        className="apogee-glass"
+        data-tauri-drag-region
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          height: 84,
+          padding: '0 14px 0 10px',
+          borderRadius: 999,
+          margin: 8,
+        }}
+      >
+        <PlusMinus onPlus={onPlus} onMinus={onMinus} />
+        <PlayStopButton status={status} onClick={onPlayStop} disabled={!currentChannel} />
+        <BarContent
+          status={status}
+          currentChannel={currentChannel}
+          nowPlaying={nowPlaying}
+          errorMessage={errorMessage}
+          onArtworkClick={setExpandedArtwork}
+        />
+        <VolumeControl volume={volume} onChange={onVolumeChange} />
+      </div>
+    </>
   );
 }

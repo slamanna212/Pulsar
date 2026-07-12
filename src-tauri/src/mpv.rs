@@ -100,6 +100,24 @@ fn spawn_mpv(mpv_path: &str) -> std::io::Result<Child> {
     {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
+
+        // mpv >= 0.38 registers its own Windows SMTC (System Media Transport
+        // Controls) session by default, which competes with the app's own
+        // souvlaki-based media session (see media_session.rs) and wins the OS
+        // "now playing" overlay with the raw stream filename and no artwork.
+        // Disable mpv's built-in media controls so only our session shows.
+        //
+        // This is gated to Windows only (rather than passed unconditionally)
+        // because mpv treats an unrecognized option as a fatal startup error,
+        // not a silent no-op (verified: "Error parsing option ... (option not
+        // found)" -> "Exiting... (Fatal error)"). `--media-controls` didn't
+        // exist before mpv v0.38.0, and this project doesn't pin a minimum
+        // mpv version, so passing it unconditionally risks breaking playback
+        // entirely for anyone (on any OS) running an older mpv build. The bug
+        // this addresses is Windows-only anyway (SMTC doesn't exist on
+        // Linux/macOS), so scoping the flag to Windows avoids that risk while
+        // still fixing the reported issue.
+        cmd.arg("--media-controls=no");
     }
 
     cmd.spawn()
