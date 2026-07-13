@@ -11,3 +11,7 @@
 I wanted a desktop radio player for the Satellite Radio channels included with some IPTV sources and found around the internet.
 
 Apogee combines these streams with internet data to provide a beautiful player experience.
+
+![Big Player](https://github.com/slamanna212/Apogee/blob/main/.github/assets/bigplayer.png?raw=true "Big Player")
+
+![Medium Player](https://github.com/slamanna212/Apogee/blob/main/.github/assets/mediumplayer.png?raw=true "Medium Player")
