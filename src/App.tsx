@@ -48,7 +48,11 @@ const SCREEN_MARGIN = 28;
  * exactly like a single physical object rather than two windows that merely
  * track each other.
  */
-async function applyWindowState(browserOpen: boolean, barMode: BarMode) {
+async function applyWindowState(
+  browserOpen: boolean,
+  barMode: BarMode,
+  overridePosition?: PhysicalPosition | null,
+) {
   const win = getCurrentWebviewWindow();
   const monitor = (await currentMonitor()) ?? (await primaryMonitor());
   const scale = monitor?.scaleFactor ?? 1;
@@ -72,7 +76,17 @@ async function applyWindowState(browserOpen: boolean, barMode: BarMode) {
   await win.setResizable(true);
   await win.setSize(new PhysicalSize(width, height));
 
-  if (monitor) {
+  const overrideValid =
+    !!overridePosition &&
+    !!monitor &&
+    overridePosition.x >= monitor.position.x - width &&
+    overridePosition.x <= monitor.position.x + monitor.size.width &&
+    overridePosition.y >= monitor.position.y - height &&
+    overridePosition.y <= monitor.position.y + monitor.size.height;
+
+  if (overrideValid) {
+    await win.setPosition(overridePosition!);
+  } else if (monitor) {
     const x = monitor.position.x + (monitor.size.width - width) / 2;
     const y = browserOpen
       ? monitor.position.y + (monitor.size.height - height) / 2
@@ -221,12 +235,16 @@ function AppContent() {
   }, [browserOpen, barMode]);
 
   const wasMinimizedRef = useRef(false);
+  const lastKnownPositionRef = useRef<PhysicalPosition | null>(null);
   useEffect(() => {
     // On Linux, undecorated/transparent windows sometimes get left at the
-    // wrong OS size/position after being minimized and restored (a GTK/WM
-    // quirk, not something the app's own state tracks). Regaining focus is
-    // a reliable signal that the window just came back, so re-assert the
-    // size/position for the current mode at that point.
+    // wrong OS size after being minimized and restored (a GTK/WM quirk, not
+    // something the app's own state tracks). Regaining focus is a reliable
+    // signal that the window just came back, so re-assert the size for the
+    // current mode at that point, and restore the window to wherever it
+    // actually was (tracked via onMoved) rather than recomputing a
+    // canonical centered/docked position - otherwise every minimize/restore
+    // would discard a manual drag and snap the window back to that spot.
     //
     // Only do this for an actual minimize -> restore transition, not every
     // focus-changed event: dragging via data-tauri-drag-region is known to
@@ -235,7 +253,17 @@ function AppContent() {
     // the live OS-driven drag, making the window feel like it snaps/can't
     // be moved past a point.
     const win = getCurrentWebviewWindow();
-    let unlisten: (() => void) | undefined;
+    let unlistenFocus: (() => void) | undefined;
+    let unlistenMoved: (() => void) | undefined;
+
+    win
+      .onMoved(({ payload }) => {
+        lastKnownPositionRef.current = payload;
+      })
+      .then((fn) => {
+        unlistenMoved = fn;
+      });
+
     win
       .onFocusChanged(async ({ payload: focused }) => {
         const minimized = await win.isMinimized();
@@ -243,12 +271,16 @@ function AppContent() {
         wasMinimizedRef.current = minimized;
         if (!focused || minimized || !wasMinimized) return;
         const { browserOpen, barMode } = windowStateRef.current;
-        void applyWindowState(browserOpen, barMode);
+        void applyWindowState(browserOpen, barMode, lastKnownPositionRef.current);
       })
       .then((fn) => {
-        unlisten = fn;
+        unlistenFocus = fn;
       });
-    return () => unlisten?.();
+
+    return () => {
+      unlistenFocus?.();
+      unlistenMoved?.();
+    };
   }, []);
 
   useEffect(() => {
