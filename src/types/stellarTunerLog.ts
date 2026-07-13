@@ -81,7 +81,6 @@ export interface StellarHistoryEntry {
   artist: string;
   title: string;
   album?: string;
-  artwork_url?: string;
   cut_type?: string;
 }
 

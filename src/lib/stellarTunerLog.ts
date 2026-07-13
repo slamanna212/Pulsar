@@ -60,8 +60,5 @@ export async function getHistory(channelId: string, apiKey: string): Promise<Ste
     throw new Error(`StellarTunerLog /history failed: HTTP ${res.status}`);
   }
   const data: StellarHistoryResponse = await res.json();
-  for (const play of data.plays) {
-    if (play.artwork_url) play.artwork_url = downgradeSiriusCdnUrl(play.artwork_url);
-  }
   return data.plays;
 }

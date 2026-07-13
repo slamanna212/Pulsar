@@ -211,11 +211,6 @@ export function ChannelModal({ channel, metadata, apiKey, isFavorite, onToggleFa
                   padding: 10,
                 }}
               >
-                <div style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--app-panel2)', flex: 'none', overflow: 'hidden' }}>
-                  {entry.artwork_url && (
-                    <img src={entry.artwork_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  )}
-                </div>
                 <div style={{ minWidth: 0 }}>
                   <Text size="sm" fw={600} truncate>
                     {entry.title}
