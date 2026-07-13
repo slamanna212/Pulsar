@@ -59,6 +59,8 @@ export function ChannelCard({ channel, metadata, isFavorite, onToggleFavorite, o
       style={{
         position: 'absolute',
         inset: 0,
+        borderRadius: 16,
+        overflow: 'hidden',
         background,
         transform: hovered ? 'scale(1.03) translateZ(0)' : 'scale(1) translateZ(0)',
         transition: 'transform 150ms',
@@ -84,6 +86,7 @@ export function ChannelCard({ channel, metadata, isFavorite, onToggleFavorite, o
         style={{
           position: 'absolute',
           inset: 0,
+          borderRadius: 16,
           background: 'linear-gradient(160deg, rgba(255,255,255,.28), rgba(7,6,13,.4))',
           backdropFilter: 'blur(16px) saturate(150%)',
           WebkitBackdropFilter: 'blur(16px) saturate(150%)',
