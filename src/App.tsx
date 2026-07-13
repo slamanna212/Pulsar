@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { MantineProvider } from '@mantine/core';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { primaryMonitor } from '@tauri-apps/api/window';
+import { currentMonitor, primaryMonitor } from '@tauri-apps/api/window';
 import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { IconApps, IconHistory, IconHome2, IconMinus, IconSettings, IconSquare, IconStar, IconX } from '@tabler/icons-react';
 import logoUrl from './assets/logo.svg';
@@ -49,7 +49,7 @@ const SCREEN_MARGIN = 28;
  */
 async function applyWindowState(browserOpen: boolean, barMode: BarMode) {
   const win = getCurrentWebviewWindow();
-  const monitor = await primaryMonitor();
+  const monitor = (await currentMonitor()) ?? (await primaryMonitor());
   const scale = monitor?.scaleFactor ?? 1;
 
   const target = browserOpen
