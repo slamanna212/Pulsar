@@ -273,7 +273,17 @@ function AppContent() {
   const win = getCurrentWebviewWindow();
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div
+      id="apogee-window"
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        borderRadius: browserOpen ? 26 : 999,
+        transform: 'translateZ(0)',
+      }}
+    >
       {browserOpen && (
         <div
           style={{

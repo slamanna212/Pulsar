@@ -453,6 +453,7 @@ export function TransportBar({
       radius={26}
       padding={0}
       centered
+      portalProps={{ target: '#apogee-window' }}
     >
       {expandedArtwork && (
         <img

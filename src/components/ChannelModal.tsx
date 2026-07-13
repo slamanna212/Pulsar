@@ -71,7 +71,16 @@ export function ChannelModal({ channel, metadata, apiKey, isFavorite, onToggleFa
   const backdropColor = metadata?.dark_bg_color || '#111116';
 
   return (
-    <Modal opened onClose={onClose} withCloseButton={false} size="1100px" radius={26} padding={0} centered>
+    <Modal
+      opened
+      onClose={onClose}
+      withCloseButton={false}
+      size="1100px"
+      radius={26}
+      padding={0}
+      centered
+      portalProps={{ target: '#apogee-window' }}
+    >
       <div style={{ display: 'flex', height: 560 }}>
         <div
           style={{

@@ -11,7 +11,15 @@ export function UpdateModal() {
     progress?.total && progress.total > 0 ? Math.min(100, Math.round((progress.downloaded / progress.total) * 100)) : undefined;
 
   return (
-    <Modal opened onClose={dismiss} withCloseButton={false} size="440px" radius={20} centered>
+    <Modal
+      opened
+      onClose={dismiss}
+      withCloseButton={false}
+      size="440px"
+      radius={20}
+      centered
+      portalProps={{ target: '#apogee-window' }}
+    >
       <Stack gap={14}>
         {status === 'available' && (
           <>
