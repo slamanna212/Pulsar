@@ -117,7 +117,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ needs.check-version.outputs.tag }}
-          releaseName: 'Apogee ${{ needs.check-version.outputs.tag }}'
+          releaseName: 'Release ${{ needs.check-version.outputs.tag }}'
           releaseBody: 'See the assets below to download this version.'
           releaseDraft: true
           prerelease: ${{ needs.check-version.outputs.prerelease == 'true' }}
