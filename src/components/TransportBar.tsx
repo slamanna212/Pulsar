@@ -31,7 +31,7 @@ function PlusMinus({
   onMinus: () => void;
   compact?: boolean;
 }) {
-  const size = compact ? 20 : 30;
+  const size = compact ? 22 : 32;
   const btnStyle = {
     width: size,
     height: size,
@@ -39,14 +39,15 @@ function PlusMinus({
     alignItems: 'center',
     justifyContent: 'center',
     fontFamily: "'Space Grotesk', sans-serif",
-    fontWeight: 600,
-    fontSize: compact ? 12 : 16,
+    fontWeight: 700,
+    fontSize: compact ? 20 : 28,
+    lineHeight: 1,
     color: 'var(--app-dim)',
     cursor: 'pointer',
     userSelect: 'none' as const,
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 'none' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 'none' }}>
       <div style={btnStyle} onClick={onPlus} role="button" aria-label="Open browser">
         +
       </div>
