@@ -3,6 +3,7 @@ import { Text } from '@mantine/core';
 import { useChannelStore } from '../stores/channelStore';
 import { useLibraryStore } from '../stores/libraryStore';
 import { ChannelCard } from '../components/ChannelCard';
+import { buildRecommendationRows, getAllGenres, rankPersonalizedGenres, shuffleGenres } from '../lib/recommendations';
 import type { XtreamChannel } from '../types/xtream';
 import type { StellarChannel } from '../types/stellarTunerLog';
 
@@ -63,26 +64,20 @@ export function Home({ onSelectChannel, onPlayChannel }: HomeProps) {
     [recentlyPlayed, channels],
   );
 
-  const genreRows = useMemo(() => {
-    const seenGenres = new Set<string>();
-    const rows: { genre: string; channels: XtreamChannel[] }[] = [];
-    const recentIds = new Set(recentlyPlayed);
+  const personalizedGenres = useMemo(
+    () => rankPersonalizedGenres(channelMetadata, recentlyPlayed, favorites),
+    [channelMetadata, recentlyPlayed, favorites],
+  );
 
-    for (const channel of recentChannels) {
-      const meta = channelMetadata.get(channel.stream_id);
-      const primary = meta?.categories.find((c) => c.is_primary);
-      if (!primary || seenGenres.has(primary.name)) continue;
-      seenGenres.add(primary.name);
+  const shuffledFillerGenres = useMemo(
+    () => shuffleGenres(getAllGenres(channelMetadata)),
+    [channelMetadata],
+  );
 
-      const related = channels.filter((c) => {
-        if (recentIds.has(c.stream_id)) return false;
-        return channelMetadata.get(c.stream_id)?.categories.some((cat) => cat.name === primary.name);
-      });
-      if (related.length > 0) rows.push({ genre: primary.name, channels: related.slice(0, 8) });
-      if (rows.length >= 2) break;
-    }
-    return rows;
-  }, [recentChannels, channelMetadata, channels, recentlyPlayed]);
+  const recommendationRows = useMemo(
+    () => buildRecommendationRows(personalizedGenres, shuffledFillerGenres, channels, channelMetadata, recentlyPlayed),
+    [personalizedGenres, shuffledFillerGenres, channels, channelMetadata, recentlyPlayed],
+  );
 
   return (
     <div>
@@ -99,11 +94,11 @@ export function Home({ onSelectChannel, onPlayChannel }: HomeProps) {
         onSelect={onSelectChannel}
         onPlay={onPlayChannel}
       />
-      {genreRows.map((row) => (
+      {recommendationRows.map((row) => (
         <Row
           key={row.genre}
-          title={`More ${row.genre}`}
-          subtitle={`because you've been playing ${row.genre}`}
+          title={row.personalized ? `More ${row.genre}` : `Explore ${row.genre}`}
+          subtitle={row.personalized ? `because you've been playing ${row.genre}` : 'something new to try'}
           channels={row.channels}
           channelMetadata={channelMetadata}
           favorites={favorites}
