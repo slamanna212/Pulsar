@@ -5,6 +5,7 @@ export const MATCH_THRESHOLD = 0.85;
 
 export function normalizeChannelName(name: string): string {
   let normalized = name.trim().toLowerCase();
+  normalized = normalized.replace(/^radio:\s*/, '');
   normalized = normalized.replace(/^the\s+/, '');
   normalized = normalized.replace(/\s+(hd|radio)$/i, '');
   normalized = normalized.replace(/[^a-z0-9]+/g, '');
