@@ -121,3 +121,21 @@ jobs:
           releaseBody: 'See the assets below to download this version.'
           releaseDraft: true
           prerelease: ${{ needs.check-version.outputs.prerelease == 'true' }}
+
+      - name: Upload stable-named download aliases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.check-version.outputs.tag }}"
+          BUNDLE_DIR="src-tauri/target/release/bundle"
+          if [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
+            cp "$BUNDLE_DIR"/deb/*.deb Apogee_amd64.deb
+            cp "$BUNDLE_DIR"/rpm/*.rpm Apogee-x86_64.rpm
+            cp "$BUNDLE_DIR"/appimage/*.AppImage Apogee_amd64.AppImage
+            gh release upload "$TAG" Apogee_amd64.deb Apogee-x86_64.rpm Apogee_amd64.AppImage --repo "${{ github.repository }}" --clobber
+          else
+            cp "$BUNDLE_DIR"/nsis/*.exe Apogee_x64-setup.exe
+            gh release upload "$TAG" Apogee_x64-setup.exe --repo "${{ github.repository }}" --clobber
+          fi

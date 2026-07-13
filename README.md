@@ -5,6 +5,13 @@
 <h1 align="center">Apogee</h1>
 <p align="center">Cross Platform Xtreme Codes Radio Player. Works great with apps like Dispatcharr and IPTV providers.</p>
 
+<p align="center">
+  <a href="https://github.com/slamanna212/Apogee/releases/latest/download/Apogee_x64-setup.exe"><img src="https://img.shields.io/badge/Windows-Download-0078D6?style=for-the-badge&logo=windows11&logoColor=white" alt="Download for Windows"></a>
+  <a href="https://github.com/slamanna212/Apogee/releases/latest/download/Apogee_amd64.deb"><img src="https://img.shields.io/badge/Linux-.deb-A81D33?style=for-the-badge&logo=debian&logoColor=white" alt="Download .deb"></a>
+  <a href="https://github.com/slamanna212/Apogee/releases/latest/download/Apogee-x86_64.rpm"><img src="https://img.shields.io/badge/Linux-.rpm-EE0000?style=for-the-badge&logo=redhat&logoColor=white" alt="Download .rpm"></a>
+  <a href="https://github.com/slamanna212/Apogee/releases/latest/download/Apogee_amd64.AppImage"><img src="https://img.shields.io/badge/Linux-AppImage-333333?style=for-the-badge&logo=linux&logoColor=white" alt="Download AppImage"></a>
+</p>
+
 ---
 
 ## ❔ What is Apogee
