@@ -35,6 +35,16 @@ pub fn run() {
       #[cfg(desktop)]
       app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
 
+      // Ensures mpv can never outlive Apogee on Windows, regardless of how
+      // this process exits (crash, force-quit, or the updater's
+      // `std::process::exit`) - see `mpv::create_process_job`. The returned
+      // `Job` must be kept alive for the process lifetime, so it's stashed in
+      // managed state rather than dropped at the end of this closure.
+      #[cfg(windows)]
+      if let Some(job) = mpv::create_process_job() {
+        app.manage(job);
+      }
+
       waveform::ensure_started(&app.handle());
 
       match media_session::init(&app.handle()) {

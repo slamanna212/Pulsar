@@ -105,16 +105,31 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
 
     set({ status: 'downloading', progress: { downloaded: 0 }, errorMessage: undefined });
     try {
+      // A large installer can emit hundreds of 'Progress' events per second;
+      // committing a state update (and re-render) for every single one gives
+      // the renderer no idle time to actually paint the bar's width, so the
+      // number visibly climbs while the fill appears frozen. Track progress
+      // locally and only flush to the store a few times a second.
+      let downloaded = 0;
+      let total: number | undefined;
+      let lastFlush = 0;
+      const flush = () => set({ progress: { downloaded, total } });
+
       await pendingUpdate.downloadAndInstall((event: DownloadEvent) => {
         if (event.event === 'Started') {
-          set({ progress: { downloaded: 0, total: event.data.contentLength } });
+          downloaded = 0;
+          total = event.data.contentLength;
+          lastFlush = Date.now();
+          flush();
         } else if (event.event === 'Progress') {
-          set((s) => ({
-            progress: {
-              downloaded: (s.progress?.downloaded ?? 0) + event.data.chunkLength,
-              total: s.progress?.total,
-            },
-          }));
+          downloaded += event.data.chunkLength;
+          const now = Date.now();
+          if (now - lastFlush >= 100) {
+            lastFlush = now;
+            flush();
+          }
+        } else if (event.event === 'Finished') {
+          flush();
         }
       });
       set({ status: 'ready' });

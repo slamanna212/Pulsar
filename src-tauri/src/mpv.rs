@@ -65,12 +65,91 @@ async fn stderr_tail_string(tail: &Arc<Mutex<VecDeque<String>>>) -> String {
 /// in `std::process::exit`, which skips Drop impls - so `kill_on_drop` on the
 /// child alone is not enough to guarantee mpv (and its open stream
 /// connection) is torn down when the app quits.
+///
+/// This is a best-effort, fire-and-forget signal only (it doesn't wait for
+/// mpv to actually exit) - it's a fast path for the normal-quit case. The
+/// durable safety net for *any* kind of Apogee exit (crash, force-quit, the
+/// Windows updater's `std::process::exit`, which also never runs this) is
+/// `create_process_job`/`pre_exec` PDEATHSIG below, which the OS enforces
+/// even if this function never runs at all.
 pub fn kill_on_exit(state: &MpvState) {
     if let Ok(mut guard) = state.inner.try_lock() {
         if let Some(inner) = guard.as_mut() {
             let _ = inner.child.start_kill();
         }
     }
+}
+
+/// Kills mpv and blocks until it has actually exited (and released its file
+/// handle), unlike `kill_on_exit`'s fire-and-forget signal. Used right before
+/// the Windows updater launches the NSIS/MSI installer, which will fail to
+/// overwrite `mpv.exe` if it's still running.
+///
+/// Deliberately synchronous (`try_lock`/`try_wait` + `thread::sleep`, no
+/// `.await`) rather than an `async fn`: the updater plugin's `on_before_exit`
+/// hook is a plain `Fn() + Send + Sync`, invoked from inside an already-running
+/// async command handler on Tauri's tokio runtime - nesting a `block_on` in
+/// that position would panic ("Cannot start a runtime from within a
+/// runtime"). Blocking the current OS thread with a short poll loop instead
+/// sidesteps that entirely.
+pub fn kill_blocking(state: &MpvState) {
+    for _ in 0..50 {
+        match state.inner.try_lock() {
+            Ok(mut guard) => {
+                let Some(inner) = guard.as_mut() else { return };
+                let _ = inner.child.start_kill();
+                for _ in 0..50 {
+                    match inner.child.try_wait() {
+                        Ok(Some(_)) => return,
+                        _ => std::thread::sleep(std::time::Duration::from_millis(100)),
+                    }
+                }
+                return;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(100)),
+        }
+    }
+}
+
+/// Puts the *current* (Apogee) process into a Windows Job Object configured
+/// to kill every process in the job as soon as the job's last handle closes
+/// - which happens automatically when this process terminates, by any means
+/// (normal exit, crash, task-kill, or the updater's `std::process::exit`).
+/// Child processes spawned afterwards (mpv) join the job automatically, so
+/// this guarantees mpv can never outlive Apogee, without depending on Drop or
+/// Tauri's event loop running at all. Must be called once at startup and the
+/// returned `Job` kept alive for the process lifetime (e.g. via Tauri managed
+/// state) - dropping it early would close the handle and kill mpv
+/// prematurely.
+#[cfg(windows)]
+pub fn create_process_job() -> Option<win32job::Job> {
+    let job = match win32job::Job::create() {
+        Ok(job) => job,
+        Err(e) => {
+            log::warn!("failed to create process job object: {e}");
+            return None;
+        }
+    };
+
+    let mut info = match job.query_extended_limit_info() {
+        Ok(info) => info,
+        Err(e) => {
+            log::warn!("failed to query process job object limits: {e}");
+            return None;
+        }
+    };
+    info.limit_kill_on_job_close();
+    if let Err(e) = job.set_extended_limit_info(&info) {
+        log::warn!("failed to configure process job object: {e}");
+        return None;
+    }
+
+    if let Err(e) = job.assign_current_process() {
+        log::warn!("failed to assign process to job object: {e}");
+        return None;
+    }
+
+    Some(job)
 }
 
 #[cfg(unix)]
@@ -95,6 +174,18 @@ fn spawn_mpv(mpv_path: &str) -> std::io::Result<Child> {
     .stdout(Stdio::null())
     .stderr(Stdio::piped())
     .kill_on_drop(true);
+
+    // Job objects (Windows, see `create_process_job`) cover the general "any
+    // kind of Apogee exit" case, but Linux has no equivalent - ask the kernel
+    // to SIGTERM mpv itself if Apogee's process dies for any reason (crash,
+    // force-quit, `kill -9`) so it's not left running/orphaned.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_ulong);
+            Ok(())
+        });
+    }
 
     #[cfg(windows)]
     {

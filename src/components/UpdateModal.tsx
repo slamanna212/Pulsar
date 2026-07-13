@@ -1,5 +1,37 @@
-import { Alert, Button, Group, Modal, Progress, Stack, Text } from '@mantine/core';
+import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { useUpdateStore } from '../stores/updateStore';
+
+// Mantine's <Progress> drives its fill width through a CSS custom property
+// (--progress-section-size), which - under the rapid stream of state updates
+// a large download produces - has been observed to leave the fill visually
+// frozen while the percentage text keeps climbing (a WebView2 repaint quirk
+// with CSS-var-driven widths, not a state bug: both come from the same
+// `percent` value in the same render). A directly-styled width avoids that
+// indirection entirely, matching the track/fill pattern already used for the
+// volume slider in TransportBar.tsx.
+function DownloadProgressBar({ percent }: { percent: number | undefined }) {
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: 6,
+        borderRadius: 4,
+        background: 'rgba(255,255,255,.12)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          width: percent !== undefined ? `${percent}%` : '100%',
+          height: '100%',
+          borderRadius: 4,
+          background: 'var(--app-accent2)',
+          transition: 'width 100ms linear',
+        }}
+      />
+    </div>
+  );
+}
 
 export function UpdateModal() {
   const { status, currentVersion, latestVersion, changelog, progress, errorMessage, downloadAndInstall, relaunchNow, dismiss } =
@@ -48,7 +80,7 @@ export function UpdateModal() {
             <Text fw={700} size="lg" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>
               Downloading update…
             </Text>
-            <Progress value={percent ?? 100} animated={percent === undefined} striped={percent === undefined} />
+            <DownloadProgressBar percent={percent} />
             {percent !== undefined && (
               <Text size="xs" c="dimmed">
                 {percent}%
