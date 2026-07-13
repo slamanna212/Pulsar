@@ -22,6 +22,8 @@ interface TransportBarProps {
   onVolumeChange: (volume: number) => void;
   /** True when running as the standalone mini player window (not the full app), which is short and needs the volume popover to open sideways instead of upward. */
   compactVolumePopover?: boolean;
+  /** True when running as the standalone mini player window; the artwork expand modal looks wrong in that tiny window, so clicking artwork is disabled there. */
+  isMiniPlayer?: boolean;
 }
 
 function PlusMinus({
@@ -344,7 +346,7 @@ function BarContent({
   currentChannel: XtreamChannel | null;
   nowPlaying?: StellarStation;
   errorMessage?: string | null;
-  onArtworkClick: (artworkUrl: string) => void;
+  onArtworkClick?: (artworkUrl: string) => void;
 }) {
   if (!currentChannel) {
     return (
@@ -435,8 +437,16 @@ function BarContent({
         <img
           src={artwork}
           alt=""
-          onClick={() => onArtworkClick(artwork)}
-          style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flex: 'none', background: 'var(--app-panel2)', cursor: 'pointer' }}
+          onClick={onArtworkClick ? () => onArtworkClick(artwork) : undefined}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 14,
+            objectFit: 'cover',
+            flex: 'none',
+            background: 'var(--app-panel2)',
+            cursor: onArtworkClick ? 'pointer' : 'default',
+          }}
         />
       ) : (
         <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--app-panel2)', flex: 'none' }} />
@@ -541,6 +551,7 @@ export function TransportBar({
   onPlayStop,
   onVolumeChange,
   compactVolumePopover,
+  isMiniPlayer,
 }: TransportBarProps) {
   const [expandedArtwork, setExpandedArtwork] = useState<string | null>(null);
 
@@ -591,8 +602,7 @@ export function TransportBar({
               <img
                 src={artwork}
                 alt=""
-                onClick={() => setExpandedArtwork(artwork)}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             )}
           </div>
@@ -626,7 +636,7 @@ export function TransportBar({
           currentChannel={currentChannel}
           nowPlaying={nowPlaying}
           errorMessage={errorMessage}
-          onArtworkClick={setExpandedArtwork}
+          onArtworkClick={isMiniPlayer ? undefined : setExpandedArtwork}
         />
         <VolumeControl volume={volume} onChange={onVolumeChange} compact={compactVolumePopover} />
       </div>

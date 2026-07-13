@@ -429,6 +429,7 @@ function AppContent() {
             }}
             onVolumeChange={setVolume}
             compactVolumePopover={!browserOpen}
+            isMiniPlayer={!browserOpen}
           />
         </div>
       )}
