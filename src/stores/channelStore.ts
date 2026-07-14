@@ -13,7 +13,7 @@ interface ChannelState {
   channelMetadata: Map<number, StellarChannel>;
   metadataStatus: 'idle' | 'loading' | 'loaded' | 'error';
   fetchChannels: (creds: XtreamCredentials, categoryId: string) => Promise<void>;
-  pollNowPlaying: (apiKey: string) => Promise<void>;
+  pollNowPlaying: (apiKey?: string) => Promise<void>;
   fetchChannelMetadata: () => Promise<void>;
 }
 

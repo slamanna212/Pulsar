@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Button, Group, Text, TextInput } from '@mantine/core';
 import type { Settings } from '../../stores/settingsStore';
-import { getNowPlaying } from '../../lib/stellarTunerLog';
+import { getChannels, getHistory } from '../../lib/stellarTunerLog';
 import { OnboardingCard } from './OnboardingCard';
 
 interface StellarApiScreenProps {
@@ -20,7 +20,12 @@ export function StellarApiScreen({ settings, onBack, onSkip, onNext }: StellarAp
     setTestStatus('testing');
     setTestError(null);
     try {
-      await getNowPlaying(stellarApiKey);
+      const channels = await getChannels();
+      const sample = channels[0];
+      if (!sample) {
+        throw new Error('No channels available to test against right now.');
+      }
+      await getHistory(sample.id, stellarApiKey);
       setTestStatus('ok');
     } catch (err) {
       setTestStatus('error');
@@ -31,10 +36,11 @@ export function StellarApiScreen({ settings, onBack, onSkip, onNext }: StellarAp
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%', maxWidth: 520 }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ font: '700 22px "Space Grotesk", sans-serif', marginBottom: 6 }}>Show what's playing</div>
+        <div style={{ font: '700 22px "Space Grotesk", sans-serif', marginBottom: 6 }}>See play history</div>
         <Text size="sm" c="dimmed">
-          A StellarTunerLog API key lets Apogee show live song and artist info for the channel you're listening to.
-          This step is optional — you can always add a key later from Settings.
+          Apogee shows live song and artist info for every channel automatically — no API key needed. A
+          StellarTunerLog API key unlocks one more thing: the "recently played" history list on each channel's
+          detail page. This step is optional — you can always add a key later from Settings.
         </Text>
       </div>
 

@@ -31,7 +31,7 @@ Requires the `mpv` binary on `PATH` at runtime; the Rust side spawns it as a sub
 - **`src/`** (TypeScript/React, frontend):
   - `lib/mpvClient.ts`, `lib/secrets.ts` — direct `invoke()` wrappers around the Rust commands above; this is the only place that should call `invoke`/`listen` for those domains.
   - `lib/xtream.ts` — Xtream Codes `player_api.php` client (categories, live streams, stream URL construction).
-  - `lib/stellarTunerLog.ts` — StellarTunerLog `/nowplaying` client.
+  - `lib/stellarTunerLog.ts` — StellarTunerLog API client: `/nowplaying` and `/channels` (both keyless), `/history` (requires an API key, used only for per-channel play history in `ChannelModal`).
   - `lib/channelMatcher.ts` — normalizes and fuzzy-matches (Levenshtein similarity, threshold `MATCH_THRESHOLD = 0.85`) Xtream channel names against StellarTunerLog station names, since the two systems don't share a stable ID for the same station.
   - `stores/` (Zustand) — one store per concern, each owning both state and the async actions that mutate it:
     - `settingsStore.ts` — persisted app settings via `@tauri-apps/plugin-store` (`settings.json`), with the Xtream password and StellarTunerLog API key kept out of that file and stored via `lib/secrets.ts` instead. Also migrates any plaintext secrets from older versions that stored them in the settings file directly.
@@ -41,7 +41,7 @@ Requires the `mpv` binary on `PATH` at runtime; the Rust side spawns it as a sub
 
 ### Key flow
 
-Settings (Xtream base URL/credentials + category, StellarTunerLog API key) → `channelStore.fetchChannels` loads the channel list → user selects a channel → `playerStore.selectChannel` builds a stream URL (`{baseUrl}/live/{user}/{pass}/{streamId}{extension}`) and loads it into mpv → mpv events flow back over the `mpv-event` Tauri event into `playerStore` → in parallel, `channelStore.pollNowPlaying` periodically fetches StellarTunerLog and fuzzy-matches it onto channels for display and OS media session metadata.
+Settings (Xtream base URL/credentials + category; an optional StellarTunerLog API key needed only for per-channel play history) → `channelStore.fetchChannels` loads the channel list → user selects a channel → `playerStore.selectChannel` builds a stream URL (`{baseUrl}/live/{user}/{pass}/{streamId}{extension}`) and loads it into mpv → mpv events flow back over the `mpv-event` Tauri event into `playerStore` → in parallel, `channelStore.pollNowPlaying` periodically fetches StellarTunerLog (no key required) and fuzzy-matches it onto channels for display and OS media session metadata.
 
 ### Backend quirks (see `docs/milestone-0-findings.md`)
 

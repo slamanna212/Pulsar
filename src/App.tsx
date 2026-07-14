@@ -199,7 +199,7 @@ function AppContent() {
   }, [settingsLoaded, settings.baseUrl, settings.username, settings.password, settings.categoryId, fetchChannels]);
 
   useEffect(() => {
-    if (!settingsLoaded || !settings.stellarApiKey || channels.length === 0) return;
+    if (!settingsLoaded || channels.length === 0) return;
     pollNowPlaying(settings.stellarApiKey);
     const id = setInterval(() => pollNowPlaying(settings.stellarApiKey), settings.pollIntervalSec * 1000);
     return () => clearInterval(id);

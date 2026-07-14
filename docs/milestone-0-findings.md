@@ -55,4 +55,4 @@ Tested `http://{base}/live/{user}/{pass}/{stream_id}.ts` and `.m3u8` directly:
 
 ## StellarTunerLog `/nowplaying`
 
-**Not yet verified** — no StellarTunerLog API key has been provided yet. This needs to happen before milestone 5 (channel matcher + now-playing panel), specifically before tuning `channelMatcher.ts`'s normalization/threshold against real channel-name strings. Revisit before starting milestone 5.
+**Update:** confirmed directly with the API operator that `/nowplaying` and `/channels` require no API key at all — only `/history` (per-channel play history) checks the `X-API-Key` header. The app polls `/nowplaying` unconditionally regardless of whether a key is configured; the key is only needed to populate the "recently played" panel in `ChannelModal`.

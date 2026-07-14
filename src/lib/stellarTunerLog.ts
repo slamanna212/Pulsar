@@ -20,9 +20,10 @@ function downgradeSiriusCdnUrl(url: string): string {
   return url.replace(/^https:\/\/(pri\.art\.prod\.streaming\.siriusxm\.com\/)/, 'http://$1');
 }
 
-export async function getNowPlaying(apiKey: string): Promise<StellarNowPlayingResponse> {
+/** No API key required for /nowplaying - only /history checks it. */
+export async function getNowPlaying(apiKey?: string): Promise<StellarNowPlayingResponse> {
   const res = await fetch(NOWPLAYING_URL, {
-    headers: { 'X-API-Key': apiKey },
+    headers: apiKey ? { 'X-API-Key': apiKey } : undefined,
   });
   if (!res.ok) {
     throw new Error(`StellarTunerLog /nowplaying failed: HTTP ${res.status}`);
@@ -30,7 +31,7 @@ export async function getNowPlaying(apiKey: string): Promise<StellarNowPlayingRe
   return res.json();
 }
 
-/** No API key required per the StellarTunerLog API mapping. */
+/** No API key required for /channels either - only /history checks it. */
 export async function getChannels(): Promise<StellarChannel[]> {
   const res = await fetch(CHANNELS_URL);
   if (!res.ok) {
