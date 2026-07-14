@@ -12,10 +12,6 @@
   <a href="https://github.com/slamanna212/Apogee/releases/latest/download/Apogee_amd64.AppImage"><img src="https://img.shields.io/badge/Linux-AppImage-333333?style=for-the-badge&logo=linux&logoColor=white" alt="Download AppImage"></a>
 </p>
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue?style=for-the-badge" alt="License: PolyForm Noncommercial 1.0.0"></a>
-</p>
-
 ---
 
 ## ❔ What is Apogee
@@ -26,7 +22,3 @@ Apogee combines these streams with internet data to provide a beautiful player e
 ![Big Player](https://github.com/slamanna212/Apogee/blob/main/.github/assets/bigplayer.png?raw=true "Big Player")
 
 ![Medium Player](https://github.com/slamanna212/Apogee/blob/main/.github/assets/mediumplayer.png?raw=true "Medium Player")
-
-## 📄 License
-
-Apogee is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). You're free to use, modify, and redistribute it for any noncommercial purpose; commercial use requires separate permission from the author.
