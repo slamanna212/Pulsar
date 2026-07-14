@@ -172,7 +172,7 @@ export function Settings() {
             min={5}
             max={300}
             value={pollIntervalSec}
-            onChange={(v) => setPollIntervalSec(typeof v === 'number' ? v : 25)}
+            onChange={(v) => setPollIntervalSec(typeof v === 'number' ? v : 10)}
           />
         </Card>
 

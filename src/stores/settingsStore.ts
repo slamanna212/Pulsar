@@ -28,7 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   categoryId: null,
   categoryName: null,
   stellarApiKey: '',
-  pollIntervalSec: 25,
+  pollIntervalSec: 10,
   defaultVolume: 70,
   updateChannel: 'stable',
   keepMiniWindowOnTop: true,
