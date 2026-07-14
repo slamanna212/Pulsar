@@ -34,13 +34,14 @@ import {
   unlinkSync,
   renameSync,
   rmSync,
+  readFileSync,
+  writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import sevenzip from '7zip-min';
 // Node's built-in global fetch (a frozen vendored undici) hits a known
 // assertion crash - "assert(!this.paused)" in Parser.finish - when a
@@ -83,6 +84,66 @@ const AUTO_TARGETS_BY_PLATFORM = {
   linux: ['linux'],
   darwin: [],
 };
+
+// Zeroes the *content* of named ELF sections in place, without touching the
+// file's total length or moving any other bytes. This matters specifically
+// because a type-2 AppImage is an ELF executable with a squashfs filesystem
+// image appended directly after it, as raw bytes outside any ELF section -
+// running `objcopy --remove-section` on one (as this script used to)
+// rewrites/relinks the whole file from its section table and silently
+// discards that trailing, non-section-owned squashfs payload, corrupting the
+// AppImage down to a fraction of its real size ("SquashFS or DwarFS image
+// not found" at runtime). Zeroing the two small sections' bytes in place
+// achieves the same goal (the update metadata is no longer readable) while
+// guaranteeing every other byte - including the appended squashfs - is
+// preserved untouched.
+function zeroElfSections(filePath, sectionNames) {
+  const buf = readFileSync(filePath);
+
+  if (buf.readUInt32LE(0) !== 0x464c457f) {
+    throw new Error(`${filePath}: not an ELF file (bad magic)`);
+  }
+  if (buf[4] !== 2) {
+    throw new Error(`${filePath}: expected a 64-bit ELF (EI_CLASS)`);
+  }
+  if (buf[5] !== 1) {
+    throw new Error(`${filePath}: expected a little-endian ELF (EI_DATA)`);
+  }
+
+  const shoff = Number(buf.readBigUInt64LE(0x28));
+  const shentsize = buf.readUInt16LE(0x3a);
+  const shnum = buf.readUInt16LE(0x3c);
+  const shstrndx = buf.readUInt16LE(0x3e);
+
+  const shstrtabHeader = shoff + shstrndx * shentsize;
+  const shstrtabOffset = Number(buf.readBigUInt64LE(shstrtabHeader + 24));
+
+  const readCString = (offset) => {
+    let end = offset;
+    while (buf[end] !== 0) end++;
+    return buf.toString('utf8', offset, end);
+  };
+
+  let zeroedCount = 0;
+  for (let i = 0; i < shnum; i++) {
+    const shdr = shoff + i * shentsize;
+    const nameOffset = buf.readUInt32LE(shdr);
+    const name = readCString(shstrtabOffset + nameOffset);
+    if (!sectionNames.includes(name)) continue;
+
+    const dataOffset = Number(buf.readBigUInt64LE(shdr + 24));
+    const dataSize = Number(buf.readBigUInt64LE(shdr + 32));
+    buf.fill(0, dataOffset, dataOffset + dataSize);
+    zeroedCount++;
+  }
+
+  if (zeroedCount === 0) {
+    throw new Error(`${filePath}: none of [${sectionNames.join(', ')}] found in ELF section headers`);
+  }
+
+  writeFileSync(filePath, buf);
+  return zeroedCount;
+}
 
 async function download(url, destPath) {
   const res = await fetch(url, { redirect: 'follow' });
@@ -134,12 +195,10 @@ async function verifiedFetch(name, target) {
 
   if (target.stripAppImageUpdateInfo) {
     try {
-      execFileSync('objcopy', ['--remove-section', '.upd_info', '--remove-section', '.sig_key', finalPath]);
-      console.log(`[fetch-mpv] ${name}: stripped embedded AppImage update-info sections`);
+      zeroElfSections(finalPath, ['.upd_info', '.sig_key']);
+      console.log(`[fetch-mpv] ${name}: zeroed embedded AppImage update-info sections`);
     } catch (err) {
-      throw new Error(
-        `[fetch-mpv] ${name}: failed to strip AppImage update-info sections (is 'objcopy'/binutils installed?): ${err.message}`,
-      );
+      throw new Error(`[fetch-mpv] ${name}: failed to zero AppImage update-info sections: ${err.message}`);
     }
   }
 

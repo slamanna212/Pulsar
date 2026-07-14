@@ -34,7 +34,30 @@ pub struct MpvState {
 /// which has no bundled binary and relies on the user installing mpv via
 /// Homebrew) - see docs/milestone-0-findings.md and the plan this
 /// implements for why bundling isn't done on every platform.
+// Scans $PATH by hand (rather than just returning the bare name and letting
+// exec's own PATH search handle it) so callers can tell *before* spawning
+// whether a real system binary is available, in order to prefer it over a
+// bundled fallback.
+#[cfg(target_os = "linux")]
+fn find_on_path(name: &str) -> Option<PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    std::env::split_paths(&path_var).map(|dir| dir.join(name)).find(|candidate| candidate.is_file())
+}
+
 fn resolve_mpv_path(app: &AppHandle) -> String {
+    // .deb/.rpm installs declare `mpv` as a package dependency (see
+    // tauri.conf.json's bundle.linux.deb/rpm.depends), so a real system mpv
+    // is normally already on PATH there - prefer it over the bundled binary.
+    // The bundled copy exists only as a fallback for the AppImage format
+    // (which has no dependency mechanism of its own) or a missing/broken
+    // system install; unconditionally preferring it would mean a stale or
+    // corrupted bundled binary silently shadows a perfectly working system
+    // mpv, which is exactly what happened during local dev testing.
+    #[cfg(target_os = "linux")]
+    if let Some(path) = find_on_path("mpv") {
+        return path.to_string_lossy().into_owned();
+    }
+
     if let Ok(resource_dir) = app.path().resource_dir() {
         let bundled: PathBuf = resource_dir.join(if cfg!(windows) {
             "binaries/mpv.exe"
@@ -48,11 +71,11 @@ fn resolve_mpv_path(app: &AppHandle) -> String {
 
     // Apps launched from Finder/Dock (as opposed to a Terminal) don't inherit
     // the interactive shell's PATH, so a bare "mpv" lookup often misses
-    // Homebrew even when it's installed. Check both Homebrew prefixes
-    // explicitly before falling back to plain PATH resolution (which still
-    // covers MacPorts/manual installs on PATH).
+    // Homebrew (or MacPorts) even when installed. Check known install
+    // prefixes explicitly before falling back to plain PATH resolution
+    // (which still covers any other manual install already on PATH).
     #[cfg(target_os = "macos")]
-    for candidate in ["/opt/homebrew/bin/mpv", "/usr/local/bin/mpv"] {
+    for candidate in ["/opt/homebrew/bin/mpv", "/usr/local/bin/mpv", "/opt/local/bin/mpv"] {
         if std::path::Path::new(candidate).exists() {
             return candidate.to_string();
         }
