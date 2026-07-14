@@ -1,3 +1,4 @@
+mod discord_rpc;
 mod logs;
 mod media_session;
 mod mpv;
@@ -15,6 +16,7 @@ pub fn run() {
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_dialog::init())
     .manage(mpv::MpvState::default())
+    .manage(discord_rpc::DiscordRpcState::default())
     .invoke_handler(tauri::generate_handler![
       mpv::mpv_load,
       mpv::mpv_stop,
@@ -26,6 +28,10 @@ pub fn run() {
       secrets::secrets_delete,
       media_session::media_session_set_metadata,
       media_session::media_session_set_playback,
+      discord_rpc::discord_rpc_connect,
+      discord_rpc::discord_rpc_set_activity,
+      discord_rpc::discord_rpc_clear_activity,
+      discord_rpc::discord_rpc_disconnect,
       updater::check_update_at_endpoint,
       updater::download_and_install_update,
       logs::export_log_file,
@@ -87,6 +93,7 @@ pub fn run() {
     .run(|app_handle, event| {
       if let tauri::RunEvent::Exit = event {
         mpv::kill_on_exit(&app_handle.state::<mpv::MpvState>());
+        discord_rpc::clear_on_exit(&app_handle.state::<discord_rpc::DiscordRpcState>());
       }
     });
 }

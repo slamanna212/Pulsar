@@ -19,6 +19,7 @@ export interface Settings {
   onboardingComplete: boolean;
   onboardingStep: number;
   verboseLogging: boolean;
+  discordRpcEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: Settings = {
   onboardingComplete: false,
   onboardingStep: 0,
   verboseLogging: false,
+  discordRpcEnabled: false,
 };
 
 type PersistedSettings = Omit<Settings, 'password' | 'stellarApiKey'>;

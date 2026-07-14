@@ -14,6 +14,12 @@ import { usePlayerStore } from './stores/playerStore';
 import { useLibraryStore } from './stores/libraryStore';
 import { useUpdateStore } from './stores/updateStore';
 import { setMediaMetadata } from './lib/mediaSession';
+import {
+  discordRpcConnect,
+  discordRpcDisconnect,
+  discordRpcSetActivity,
+  discordRpcClearActivity,
+} from './lib/discordRpc';
 import { TransportBar, type BarMode } from './components/TransportBar';
 import { ChannelModal } from './components/ChannelModal';
 import { UpdateModal } from './components/UpdateModal';
@@ -163,10 +169,22 @@ function AppContent() {
   const [compact, setCompact] = useState(false);
 
   const onboardingActive = settingsLoaded && !settings.onboardingComplete;
+  const updateStatus = useUpdateStore((s) => s.status);
+  const updateModalActive = updateStatus !== 'idle' && updateStatus !== 'checking';
 
   useEffect(() => {
     if (onboardingActive && !browserOpen) setBrowserOpen(true);
   }, [onboardingActive, browserOpen]);
+
+  // The update modal (~440px) is portaled into #apogee-window, which is
+  // clipped to whatever shape the OS window currently is. In mini-player
+  // mode that's a small pill-shaped window, so the modal's overlay/shadow
+  // get clipped hard against those tiny rounded bounds - it shows up as
+  // stray shadow bands rather than a proper modal. Force the full card open
+  // so the modal has room to render as intended.
+  useEffect(() => {
+    if (updateModalActive && !browserOpen) setBrowserOpen(true);
+  }, [updateModalActive, browserOpen]);
 
   useEffect(() => {
     loadSettings();
@@ -188,6 +206,15 @@ function AppContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsLoaded]);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    if (settings.discordRpcEnabled) {
+      void discordRpcConnect();
+    } else {
+      void discordRpcDisconnect();
+    }
+  }, [settingsLoaded, settings.discordRpcEnabled]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -232,7 +259,30 @@ function AppContent() {
     } else {
       setMediaMetadata({ title: currentChannel.name, artist: '', coverUrl: currentChannel.stream_icon });
     }
-  }, [currentChannel, currentNowPlaying]);
+
+    if (!settings.discordRpcEnabled) return;
+    if (currentNowPlaying) {
+      void discordRpcSetActivity({
+        details: currentNowPlaying.title,
+        state: currentNowPlaying.artist,
+        largeImageUrl: currentNowPlaying.artwork_url || currentChannel.stream_icon,
+        largeText: currentChannel.name,
+      });
+    } else {
+      void discordRpcSetActivity({
+        details: currentChannel.name,
+        largeImageUrl: currentChannel.stream_icon,
+        largeText: currentChannel.name,
+      });
+    }
+  }, [currentChannel, currentNowPlaying, settings.discordRpcEnabled]);
+
+  useEffect(() => {
+    if (!settings.discordRpcEnabled) return;
+    if (playerStatus === 'stopped' || playerStatus === 'error') {
+      void discordRpcClearActivity();
+    }
+  }, [playerStatus, settings.discordRpcEnabled]);
 
   useEffect(() => {
     void applyWindowState(browserOpen, barMode);

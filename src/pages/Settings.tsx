@@ -217,6 +217,15 @@ export function Settings() {
           />
         </Card>
 
+        <Card title="Discord">
+          <Switch
+            label="Show now playing on Discord"
+            description="Displays the current channel and track (when matched) as your Discord status via Rich Presence"
+            checked={settings.discordRpcEnabled}
+            onChange={(e) => updateSettings({ discordRpcEnabled: e.currentTarget.checked })}
+          />
+        </Card>
+
         <Card title="Updates">
           <Select
             label="Update channel"
