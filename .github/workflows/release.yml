@@ -125,7 +125,7 @@ jobs:
           args: ${{ matrix.args }}
           tagName: ${{ needs.check-version.outputs.tag }}
           releaseName: 'Release ${{ needs.check-version.outputs.tag }}'
-          releaseBody: 'See the assets below to download this version.'
+          releaseBody: 'Full changelogs on GitHub.'
           releaseDraft: true
           prerelease: ${{ needs.check-version.outputs.prerelease == 'true' }}
 
