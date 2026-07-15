@@ -11,7 +11,6 @@ export interface Settings {
   streamExtension: string;
   categoryId: string | null;
   categoryName: string | null;
-  pollIntervalSec: number;
   defaultVolume: number;
   updateChannel: UpdateChannel;
   keepMiniWindowOnTop: boolean;
@@ -28,7 +27,6 @@ export const DEFAULT_SETTINGS: Settings = {
   streamExtension: '.ts',
   categoryId: null,
   categoryName: null,
-  pollIntervalSec: 10,
   defaultVolume: 70,
   updateChannel: 'stable',
   keepMiniWindowOnTop: true,

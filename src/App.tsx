@@ -262,9 +262,9 @@ function AppContent() {
   useEffect(() => {
     if (!settingsLoaded || channels.length === 0) return;
     pollNowPlaying(stellarApiKey);
-    const id = setInterval(() => pollNowPlaying(stellarApiKey), settings.pollIntervalSec * 1000);
+    const id = setInterval(() => pollNowPlaying(stellarApiKey), 10_000);
     return () => clearInterval(id);
-  }, [settingsLoaded, stellarApiKey, settings.pollIntervalSec, channels, pollNowPlaying]);
+  }, [settingsLoaded, stellarApiKey, channels, pollNowPlaying]);
 
   useEffect(() => {
     if (channels.length > 0) fetchChannelMetadata();
