@@ -39,7 +39,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    versioning-strategy: increase
+    versioning-strategy: auto
     open-pull-requests-limit: 10
     commit-message:
       prefix: "cargo"
