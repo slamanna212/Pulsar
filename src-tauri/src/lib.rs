@@ -2,6 +2,7 @@ mod discord_rpc;
 mod logs;
 mod media_session;
 mod mpv;
+mod notifications;
 mod secrets;
 mod updater;
 mod waveform;
@@ -30,6 +31,7 @@ pub fn run() {
       secrets::secrets_get_builtin_stellar_key,
       media_session::media_session_set_metadata,
       media_session::media_session_set_playback,
+      notifications::send_os_notification,
       discord_rpc::discord_rpc_connect,
       discord_rpc::discord_rpc_set_activity,
       discord_rpc::discord_rpc_clear_activity,

@@ -1,6 +1,8 @@
 import { Button, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { invoke } from '@tauri-apps/api/core';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
+import { error as logError } from '@tauri-apps/plugin-log';
 import type { AlertEntry } from '../types/alerts';
 import type { StellarStation } from '../types/stellarTunerLog';
 
@@ -58,5 +60,12 @@ export async function fireAlert(
       actionTypeId: ALERT_ACTION_TYPE_ID,
       extra: { streamId },
     });
+    // The plugin's Linux backend never sets the D-Bus desktop-entry hint that GNOME
+    // (and other shells) need to resolve the sending app, so notifications can fail
+    // to display there even though the call above succeeds silently. This command
+    // fixes that on Linux and is a no-op on other platforms.
+    void invoke('send_os_notification', { title, body }).catch((e) =>
+      logError(`OS notification failed: ${e}`),
+    );
   }
 }

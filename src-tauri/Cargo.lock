@@ -96,6 +96,7 @@ dependencies = [
  "keyring",
  "libc",
  "log",
+ "notify-rust",
  "objc2",
  "objc2-core-audio",
  "objc2-core-audio-types",
