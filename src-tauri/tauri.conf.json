@@ -10,6 +10,7 @@
     "beforeBuildCommand": "npm run build && node scripts/fetch-mpv.mjs auto"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
