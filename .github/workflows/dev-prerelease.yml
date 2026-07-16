@@ -1,38 +1,44 @@
-name: Release
+name: Dev Prerelease
 
+# Manual only - builds from the `dev` branch and publishes a prerelease
+# straight away (no draft/manual-publish step) for beta-channel testers.
+# See src/stores/updateStore.ts: the app already resolves the stable vs.
+# beta update channel by filtering the GitHub releases list on `prerelease`,
+# so nothing on the app side needs to change for this to be picked up.
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'README.md'
-      - 'docs/**'
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
+concurrency:
+  group: dev-prerelease
+  cancel-in-progress: true
+
 jobs:
   check-version:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip release]')"
     outputs:
       version: ${{ steps.package_version.outputs.version }}
       tag: ${{ steps.package_version.outputs.tag }}
       release_exists: ${{ steps.check_release.outputs.exists }}
-      prerelease: ${{ steps.prerelease.outputs.value }}
     steps:
-      - name: Checkout code
+      - name: Checkout dev
         uses: actions/checkout@v5
+        with:
+          ref: dev
 
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
 
-      - name: Get package version
+      - name: Compute dev version and tag
         id: package_version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          BASE=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION="${BASE}-dev.${SHORT_SHA}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -41,20 +47,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view "v${{ steps.package_version.outputs.version }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+          if gh release view "${{ steps.package_version.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Determine prerelease flag
-        id: prerelease
-        run: |
-          VERSION="${{ steps.package_version.outputs.version }}"
-          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-.+ ]]; then
-            echo "value=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=false" >> "$GITHUB_OUTPUT"
           fi
 
   lint:
@@ -62,8 +58,10 @@ jobs:
     if: success() && needs.check-version.outputs.release_exists == 'false'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout dev
         uses: actions/checkout@v5
+        with:
+          ref: dev
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -82,8 +80,10 @@ jobs:
     if: success() && needs.check-version.outputs.release_exists == 'false'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout dev
         uses: actions/checkout@v5
+        with:
+          ref: dev
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -106,24 +106,20 @@ jobs:
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
     steps:
-      - name: Checkout code
+      - name: Checkout dev
         uses: actions/checkout@v5
+        with:
+          ref: dev
 
-      - name: Create draft release
+      - name: Create draft prerelease
         id: create
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ needs.check-version.outputs.tag }}"
-          if [ "${{ needs.check-version.outputs.prerelease }}" = "true" ]; then
-            gh release create "$TAG" --draft --prerelease \
-              --title "Release $TAG" --notes "Full changelogs on GitHub." \
-              --target "$(git rev-parse HEAD)" --repo "${{ github.repository }}"
-          else
-            gh release create "$TAG" --draft \
-              --title "Release $TAG" --notes "Full changelogs on GitHub." \
-              --target "$(git rev-parse HEAD)" --repo "${{ github.repository }}"
-          fi
+          gh release create "$TAG" --draft --prerelease \
+            --title "Dev build $TAG" --notes "Automated dev build for testing. Not for general use." \
+            --target "$(git rev-parse HEAD)" --repo "${{ github.repository }}"
           RELEASE_ID=$(gh release view "$TAG" --repo "${{ github.repository }}" --json databaseId --jq .databaseId)
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
@@ -142,8 +138,10 @@ jobs:
             args: '--target universal-apple-darwin'
     runs-on: ${{ matrix.platform }}
     steps:
-      - name: Checkout code
+      - name: Checkout dev
         uses: actions/checkout@v5
+        with:
+          ref: dev
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -195,19 +193,13 @@ jobs:
           LASTFM_SHARED_SECRET: ${{ secrets.LASTFM_SHARED_SECRET }}
         with:
           args: ${{ matrix.args }}
-          # Both tagName and releaseId are required together: releaseId pins
-          # which release to upload to (so none of the 3 platform jobs can
-          # create a competing one - that release was already created once,
-          # up front, by prepare-release), but tagName is still needed or
-          # tauri-action falls back to generating latest.json download URLs
-          # via the generic releases/latest/download/<bundle> alias instead
-          # of this release's own tag - which would silently point every
-          # release's updater manifest at whatever the newest release
-          # happens to be later on.
+          # See the matching comment in release.yml - tagName is required
+          # alongside releaseId or latest.json's download URLs fall back to
+          # the generic releases/latest/download/<bundle> alias.
           tagName: ${{ needs.check-version.outputs.tag }}
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
           releaseDraft: true
-          prerelease: ${{ needs.check-version.outputs.prerelease == 'true' }}
+          prerelease: true
 
       - name: Upload stable-named download aliases
         shell: bash
@@ -247,10 +239,14 @@ jobs:
         run: |
           TAG="${{ needs.check-version.outputs.tag }}"
           gh release delete "$TAG" --cleanup-tag --yes --repo "${{ github.repository }}" || true
-          echo "::error::One or more platform builds failed; deleted incomplete release $TAG"
+          echo "::error::One or more platform builds failed; deleted incomplete dev prerelease $TAG"
           exit 1
 
-      - name: Confirm release is ready for manual publish
+      - name: Publish dev prerelease
         if: needs.build.result == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "All platform builds succeeded. ${{ needs.check-version.outputs.tag }} is a draft release - publish it from GitHub when ready."
+          TAG="${{ needs.check-version.outputs.tag }}"
+          gh release edit "$TAG" --draft=false --repo "${{ github.repository }}"
+          echo "Published dev prerelease $TAG"
