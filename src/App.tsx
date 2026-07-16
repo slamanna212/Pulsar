@@ -23,6 +23,7 @@ import {
   discordRpcDisconnect,
   discordRpcSetActivity,
   discordRpcClearActivity,
+  resolveDiscordActivity,
 } from './lib/discordRpc';
 import { TransportBar, type BarMode } from './components/TransportBar';
 import { ChannelModal } from './components/ChannelModal';
@@ -340,30 +341,17 @@ function AppContent() {
     } else {
       setMediaMetadata({ title: currentChannel.name, artist: '', coverUrl: currentChannel.stream_icon });
     }
-
-    if (!settings.discordRpcEnabled) return;
-    if (currentNowPlaying) {
-      void discordRpcSetActivity({
-        details: currentNowPlaying.title,
-        state: currentNowPlaying.artist,
-        largeImageUrl: currentNowPlaying.artwork_url || currentChannel.stream_icon,
-        largeText: currentChannel.name,
-      });
-    } else {
-      void discordRpcSetActivity({
-        details: currentChannel.name,
-        largeImageUrl: currentChannel.stream_icon,
-        largeText: currentChannel.name,
-      });
-    }
-  }, [currentChannel, currentNowPlaying, settings.discordRpcEnabled]);
+  }, [currentChannel, currentNowPlaying]);
 
   useEffect(() => {
     if (!settings.discordRpcEnabled) return;
-    if (playerStatus === 'stopped' || playerStatus === 'error') {
+    const activity = resolveDiscordActivity(playerStatus, currentChannel, currentNowPlaying);
+    if (activity) {
+      void discordRpcSetActivity(activity);
+    } else {
       void discordRpcClearActivity();
     }
-  }, [playerStatus, settings.discordRpcEnabled]);
+  }, [playerStatus, currentChannel, currentNowPlaying, settings.discordRpcEnabled]);
 
   useEffect(() => {
     void applyWindowState(browserOpen, barMode);
