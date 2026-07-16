@@ -18,7 +18,6 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(mpv::MpvState::default())
         .manage(discord_rpc::DiscordRpcState::default())
@@ -40,6 +39,7 @@ pub fn run() {
             lastfm::lastfm_scrobble,
             media_session::media_session_set_metadata,
             media_session::media_session_set_playback,
+            notifications::ensure_os_notification_permission,
             notifications::send_os_notification,
             discord_rpc::discord_rpc_connect,
             discord_rpc::discord_rpc_set_activity,

@@ -1,19 +1,18 @@
 import { Button, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { invoke } from '@tauri-apps/api/core';
-import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { error as logError } from '@tauri-apps/plugin-log';
 import type { AlertEntry } from '../types/alerts';
 import type { StellarStation } from '../types/stellarTunerLog';
 
-/** actionTypeId registered once at app startup via registerActionTypes - see App.tsx. */
-export const ALERT_ACTION_TYPE_ID = 'channel-alert';
-export const ALERT_GO_TO_ACTION_ID = 'go-to-channel';
-
 /** Requests OS notification permission if not already decided. Safe to call repeatedly. */
 export async function ensureOSPermission(): Promise<boolean> {
-  if (await isPermissionGranted()) return true;
-  return (await requestPermission()) === 'granted';
+  try {
+    return await invoke<boolean>('ensure_os_notification_permission');
+  } catch (error) {
+    await logError(`Could not request OS notification permission: ${error}`);
+    return false;
+  }
 }
 
 export async function fireAlert(
@@ -21,6 +20,7 @@ export async function fireAlert(
   station: StellarStation,
   streamId: number,
   channelName: string,
+  artworkUrl: string | undefined,
   notifyOS: boolean,
   notifyInApp: boolean,
   onGoToChannel?: (streamId: number) => void,
@@ -54,17 +54,7 @@ export async function fireAlert(
     });
   }
   if (notifyOS && (await ensureOSPermission())) {
-    sendNotification({
-      title,
-      body,
-      actionTypeId: ALERT_ACTION_TYPE_ID,
-      extra: { streamId },
-    });
-    // The plugin's Linux backend never sets the D-Bus desktop-entry hint that GNOME
-    // (and other shells) need to resolve the sending app, so notifications can fail
-    // to display there even though the call above succeeds silently. This command
-    // fixes that on Linux and is a no-op on other platforms.
-    void invoke('send_os_notification', { title, body }).catch((e) =>
+    void invoke('send_os_notification', { title, body, streamId, artworkUrl }).catch((e) =>
       logError(`OS notification failed: ${e}`),
     );
   }

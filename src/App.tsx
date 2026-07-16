@@ -2,14 +2,13 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { MantineProvider } from '@mantine/core';
 import { Notifications, notifications } from '@mantine/notifications';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { currentMonitor, primaryMonitor } from '@tauri-apps/api/window';
 import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { IconApps, IconBell, IconHistory, IconHome2, IconMinus, IconSettings, IconSquare, IconStar, IconX } from '@tabler/icons-react';
 import { error as logError, warn as logWarn } from '@tauri-apps/plugin-log';
-import { onAction, registerActionTypes } from '@tauri-apps/plugin-notification';
 import logoUrl from './assets/logo.svg';
-import { ALERT_ACTION_TYPE_ID, ALERT_GO_TO_ACTION_ID } from './lib/alertNotify';
 import { theme, cssVariablesResolver } from './theme';
 import { useSettingsStore } from './stores/settingsStore';
 import { useChannelStore } from './stores/channelStore';
@@ -231,17 +230,17 @@ function AppContent() {
 
   useEffect(() => () => scrobbleCoordinatorRef.current?.dispose(), []);
 
+  const handlePlayChannelRef = useRef(handlePlayChannel);
   useEffect(() => {
-    void registerActionTypes([
-      { id: ALERT_ACTION_TYPE_ID, actions: [{ id: ALERT_GO_TO_ACTION_ID, title: 'Tune' }] },
-    ]).catch(() => {});
+    handlePlayChannelRef.current = handlePlayChannel;
+  });
 
+  useEffect(() => {
     let unregister: (() => void) | undefined;
-    onAction((notification) => {
-      const streamId = notification.extra?.streamId;
-      if (typeof streamId === 'number') void handlePlayChannel(streamId);
-    }).then((listener) => {
-      unregister = () => void listener.unregister();
+    listen<number>('notification-tune', ({ payload: streamId }) => {
+      if (typeof streamId === 'number') void handlePlayChannelRef.current(streamId);
+    }).then((unlisten) => {
+      unregister = unlisten;
     });
 
     return () => unregister?.();

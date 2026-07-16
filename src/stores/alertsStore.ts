@@ -105,12 +105,15 @@ export const useAlertsStore = create<AlertsState>((set, get) => ({
 
       const match = entries.find((entry) => matchesEntry(station, entry));
       if (match) {
-        const channelName = channels.find((c) => c.stream_id === streamId)?.name ?? station.name;
+        const channel = channels.find((c) => c.stream_id === streamId);
+        const channelName = channel?.name ?? station.name;
+        const artworkUrl = station.artwork_url || channel?.stream_icon;
         void fireAlert(
           match,
           station,
           streamId,
           channelName,
+          artworkUrl,
           notifyOS,
           notifyInApp && allowInAppNotifications,
           onGoToChannel,
