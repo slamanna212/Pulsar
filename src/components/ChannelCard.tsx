@@ -53,7 +53,7 @@ export function ChannelCard({ channel, metadata, isFavorite, isPlaying, onToggle
       onMouseLeave={() => setHovered(false)}
       onClick={onClick}
       role="button"
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', transform: 'translateZ(0)' }}
     >
     <div
       style={{
