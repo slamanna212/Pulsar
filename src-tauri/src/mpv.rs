@@ -158,6 +158,7 @@ pub fn kill_on_exit(state: &MpvState) {
 /// that position would panic ("Cannot start a runtime from within a
 /// runtime"). Blocking the current OS thread with a short poll loop instead
 /// sidesteps that entirely.
+#[cfg(windows)]
 pub fn kill_blocking(state: &MpvState) {
     for _ in 0..50 {
         match state.inner.try_lock() {

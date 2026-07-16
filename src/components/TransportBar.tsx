@@ -618,7 +618,7 @@ export function TransportBar({
       <>
         {artworkModal}
         <div
-          className="apogee-glass"
+          className="apogee-glass apogee-transport-surface"
           data-tauri-drag-region
           style={{
             display: 'flex',
@@ -653,7 +653,7 @@ export function TransportBar({
     <>
       {artworkModal}
       <div
-        className="apogee-glass"
+        className="apogee-glass apogee-transport-surface"
         data-tauri-drag-region
         style={{
           display: 'flex',

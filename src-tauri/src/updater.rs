@@ -1,3 +1,4 @@
+#[cfg(windows)]
 use crate::mpv::{self, MpvState};
 use serde::Serialize;
 use tauri::{ipc::Channel, Manager, ResourceId, Runtime, Webview};

@@ -88,7 +88,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "apogee"
-version = "0.1.0"
+version = "0.6.1"
 dependencies = [
  "cpal",
  "discord-rich-presence",
@@ -98,6 +98,7 @@ dependencies = [
  "log",
  "notify-rust",
  "objc2",
+ "objc2-app-kit",
  "objc2-core-audio",
  "objc2-core-audio-types",
  "objc2-core-foundation",
@@ -119,7 +120,7 @@ dependencies = [
  "tokio",
  "url",
  "win32job",
- "window-vibrancy 0.7.1",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -4515,7 +4516,7 @@ dependencies = [
  "url",
  "webkit2gtk",
  "webview2-com",
- "window-vibrancy 0.6.0",
+ "window-vibrancy",
  "windows 0.61.3",
 ]
 
@@ -5727,21 +5728,6 @@ dependencies = [
  "objc2-foundation",
  "raw-window-handle",
  "windows-sys 0.59.0",
- "windows-version",
-]
-
-[[package]]
-name = "window-vibrancy"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "010797bd7c40396fbc59d3105089fed0885fe267a0ef4a0a4646df54e28647f6"
-dependencies = [
- "objc2",
- "objc2-app-kit",
- "objc2-core-foundation",
- "objc2-foundation",
- "raw-window-handle",
- "windows-sys 0.60.2",
  "windows-version",
 ]
 

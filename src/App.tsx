@@ -4,7 +4,7 @@ import { Notifications } from '@mantine/notifications';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { currentMonitor, primaryMonitor } from '@tauri-apps/api/window';
-import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
+import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { IconApps, IconBell, IconHistory, IconHome2, IconMinus, IconSettings, IconSquare, IconStar, IconX } from '@tabler/icons-react';
 import { error as logError } from '@tauri-apps/plugin-log';
 import { onAction, registerActionTypes } from '@tauri-apps/plugin-notification';
@@ -52,7 +52,6 @@ const CARD_HEIGHT = 760;
 const BAR_OVERLAP = 50;
 const EXPANDED_BAR_SIZE = { width: 900, height: 100 };
 const COLLAPSED_BAR_SIZE = { width: 340, height: 80 };
-const SCREEN_MARGIN = 28;
 
 /**
  * One real OS window throughout. The "browser" is a rounded card absolutely
@@ -81,6 +80,33 @@ async function applyWindowState(
   const width = Math.round(target.width * scale);
   const height = Math.round(target.height * scale);
 
+  // Keep the transport's bottom-center point fixed on screen while the native
+  // window changes shape. Resizing first clips the bottom-pinned transport out
+  // of the old window, then moving the window makes it reappear elsewhere. By
+  // deriving the new origin from the current bounds and submitting both native
+  // operations together, the browser instead grows/collapses around one
+  // continuously mounted player.
+  const [currentPosition, currentSize] = await Promise.all([
+    overridePosition ? Promise.resolve(overridePosition) : win.outerPosition(),
+    win.outerSize(),
+  ]);
+  const anchorX = currentPosition.x + currentSize.width / 2;
+  const anchorY = currentPosition.y + currentSize.height;
+  let x = Math.round(anchorX - width / 2);
+  let y = Math.round(anchorY - height);
+
+  if (monitor) {
+    const area = monitor.workArea;
+    const maxX = area.position.x + area.size.width - width;
+    const maxY = area.position.y + area.size.height - height;
+    x = maxX >= area.position.x
+      ? Math.min(Math.max(x, area.position.x), maxX)
+      : Math.round(area.position.x + (area.size.width - width) / 2);
+    y = maxY >= area.position.y
+      ? Math.min(Math.max(y, area.position.y), maxY)
+      : Math.round(area.position.y + (area.size.height - height) / 2);
+  }
+
   // On Linux/GTK, calling setResizable(false) before setSize locks the
   // window manager's min/max size hints to whatever size the window
   // currently is, which can leave setSize's request only partially applied
@@ -88,25 +114,7 @@ async function applyWindowState(
   // close to the old, larger size even though content renders smaller).
   // Always resize while resizable, then lock resizability down afterward.
   await win.setResizable(true);
-  await win.setSize(new PhysicalSize(width, height));
-
-  const overrideValid =
-    !!overridePosition &&
-    !!monitor &&
-    overridePosition.x >= monitor.position.x - width &&
-    overridePosition.x <= monitor.position.x + monitor.size.width &&
-    overridePosition.y >= monitor.position.y - height &&
-    overridePosition.y <= monitor.position.y + monitor.size.height;
-
-  if (overrideValid) {
-    await win.setPosition(overridePosition!);
-  } else if (monitor) {
-    const x = monitor.position.x + (monitor.size.width - width) / 2;
-    const y = browserOpen
-      ? monitor.position.y + (monitor.size.height - height) / 2
-      : monitor.position.y + monitor.size.height - height - Math.round(SCREEN_MARGIN * scale);
-    await win.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
-  }
+  await invoke('set_window_bounds', { x, y, width, height });
 
   await win.setResizable(target.resizable);
   await win.setAlwaysOnTop(target.alwaysOnTop);
@@ -596,17 +604,6 @@ function App() {
 
   useEffect(() => {
     document.body.style.background = 'transparent';
-    // The `.apogee-glass` surfaces are translucent on Windows/macOS so the
-    // native acrylic/vibrancy behind the window shows through, but near-opaque
-    // on Linux (no compositor blur there). CSS keys those overrides off this
-    // attribute. UA sniffing is sufficient: WebView2 reports "Windows",
-    // WKWebView "Macintosh", WebKitGTK "Linux".
-    const ua = navigator.userAgent;
-    document.documentElement.dataset.platform = ua.includes('Windows')
-      ? 'windows'
-      : ua.includes('Mac')
-        ? 'macos'
-        : 'linux';
   }, []);
 
   return (
