@@ -5,6 +5,7 @@ import type { XtreamChannel } from '../types/xtream';
 import type { StellarChannel, StellarStation } from '../types/stellarTunerLog';
 import { CutTypeBadge } from './CutTypeBadge';
 import { ChannelActionsMenu } from './ChannelActionsMenu';
+import { ChannelArtwork } from './ChannelArtwork';
 import { pickChannelLogoUrl } from '../lib/channelLogo';
 
 interface ChannelListRowProps {
@@ -110,17 +111,14 @@ function ChannelListRowImpl({
       <div style={{ width: 48, flex: 'none', textAlign: 'center', font: '800 26px "Space Grotesk", sans-serif', color: 'var(--app-dim)' }}>
         {number}
       </div>
-      {artworkUrl ? (
-        <img
-          src={artworkUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          style={{ width: 68, height: 68, borderRadius: 16, objectFit: 'cover', flex: 'none', background: 'var(--app-panel2)' }}
-        />
-      ) : (
-        <div style={{ width: 68, height: 68, borderRadius: 16, background: 'var(--app-panel2)', flex: 'none' }} />
-      )}
+      <ChannelArtwork
+        channelName={channel.name}
+        streamIcon={channel.stream_icon}
+        metadata={metadata}
+        artworkUrl={artworkUrl}
+        size={68}
+        radius={16}
+      />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ minWidth: 0, maxWidth: 320, flex: 'none' }}>
           <div

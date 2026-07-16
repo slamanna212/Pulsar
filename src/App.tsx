@@ -616,6 +616,7 @@ function AppContent() {
             mode={barMode}
             status={playerStatus}
             currentChannel={currentChannel}
+            channelMetadata={currentChannel ? channelMetadata.get(currentChannel.stream_id) : undefined}
             nowPlaying={currentNowPlaying}
             volume={volume}
             isFavorite={currentChannel ? favorites.includes(currentChannel.stream_id) : false}
