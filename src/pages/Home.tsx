@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Text } from '@mantine/core';
 import { useChannelStore } from '../stores/channelStore';
 import { useLibraryStore } from '../stores/libraryStore';
@@ -14,14 +14,14 @@ interface RowProps {
   channels: XtreamChannel[];
   channelMetadata: Map<number, StellarChannel>;
   nowPlaying: Map<number, StellarStation>;
-  favorites: number[];
+  favoriteSet: Set<number>;
   currentChannelId?: number;
   onToggleFavorite: (streamId: number) => void;
   onSelect: (streamId: number) => void;
   onPlay: (streamId: number) => void;
 }
 
-function Row({ title, subtitle, channels, channelMetadata, nowPlaying, favorites, currentChannelId, onToggleFavorite, onSelect, onPlay }: RowProps) {
+const Row = memo(function Row({ title, subtitle, channels, channelMetadata, nowPlaying, favoriteSet, currentChannelId, onToggleFavorite, onSelect, onPlay }: RowProps) {
   if (channels.length === 0) return null;
   return (
     <div style={{ marginBottom: 30 }}>
@@ -36,7 +36,7 @@ function Row({ title, subtitle, channels, channelMetadata, nowPlaying, favorites
               channel={channel}
               metadata={channelMetadata.get(channel.stream_id)}
               nowPlaying={nowPlaying.get(channel.stream_id)}
-              isFavorite={favorites.includes(channel.stream_id)}
+              isFavorite={favoriteSet.has(channel.stream_id)}
               isPlaying={channel.stream_id === currentChannelId}
               onToggleFavorite={onToggleFavorite}
               onClick={onPlay}
@@ -47,7 +47,7 @@ function Row({ title, subtitle, channels, channelMetadata, nowPlaying, favorites
       </div>
     </div>
   );
-}
+});
 
 interface HomeProps {
   onSelectChannel: (streamId: number) => void;
@@ -63,6 +63,8 @@ export function Home({ onSelectChannel, onPlayChannel }: HomeProps) {
   const toggleFavorite = useLibraryStore((s) => s.toggleFavorite);
   const currentChannelId = usePlayerStore((s) => s.currentChannel?.stream_id);
 
+  const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
+
   const recentChannels = useMemo(
     () =>
       recentlyPlayed
@@ -70,6 +72,9 @@ export function Home({ onSelectChannel, onPlayChannel }: HomeProps) {
         .filter((c): c is XtreamChannel => Boolean(c)),
     [recentlyPlayed, channels],
   );
+
+  // Stable array identity so the memoized Row isn't re-rendered every tick.
+  const topRecent = useMemo(() => recentChannels.slice(0, 10), [recentChannels]);
 
   const personalizedGenres = useMemo(
     () => rankPersonalizedGenres(channelMetadata, recentlyPlayed, favorites),
@@ -94,10 +99,10 @@ export function Home({ onSelectChannel, onPlayChannel }: HomeProps) {
       </Text>
       <Row
         title="Recently played"
-        channels={recentChannels.slice(0, 10)}
+        channels={topRecent}
         channelMetadata={channelMetadata}
         nowPlaying={nowPlaying}
-        favorites={favorites}
+        favoriteSet={favoriteSet}
         currentChannelId={currentChannelId}
         onToggleFavorite={toggleFavorite}
         onSelect={onSelectChannel}
@@ -111,7 +116,7 @@ export function Home({ onSelectChannel, onPlayChannel }: HomeProps) {
           channels={row.channels}
           channelMetadata={channelMetadata}
           nowPlaying={nowPlaying}
-          favorites={favorites}
+          favoriteSet={favoriteSet}
           currentChannelId={currentChannelId}
           onToggleFavorite={toggleFavorite}
           onSelect={onSelectChannel}

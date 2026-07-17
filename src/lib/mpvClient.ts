@@ -55,5 +55,14 @@ export function getStderrTail(): Promise<string> {
 }
 
 export function onMpvEvent(callback: (event: MpvPropertyChangeEvent) => void): Promise<UnlistenFn> {
-  return listen<MpvPropertyChangeEvent>('mpv-event', (e) => callback(e.payload));
+  // The Rust side emits each mpv IPC line as a raw JSON string (avoiding a
+  // re-serialization of the parsed value); parse it once here.
+  return listen<string>('mpv-event', (e) => {
+    try {
+      callback(JSON.parse(e.payload) as MpvPropertyChangeEvent);
+    } catch {
+      // A malformed line shouldn't take down the listener; the Rust side
+      // already logs parse failures on its end.
+    }
+  });
 }

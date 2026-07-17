@@ -184,28 +184,27 @@ function TitlebarButton({ onClick, label, children }: { onClick: () => void; lab
 function AppContent() {
   const { settings, builtinStellarApiKey, loaded: settingsLoaded, load: loadSettings } = useSettingsStore();
   const stellarApiKey = builtinStellarApiKey ?? '';
-  const {
-    channels,
-    channelMetadata,
-    nowPlaying,
-    fetchChannels,
-    pollNowPlaying,
-    fetchChannelMetadata,
-  } = useChannelStore();
-  const {
-    status: playerStatus,
-    currentChannel,
-    volume,
-    muted,
-    errorMessage,
-    isBuffering,
-    selectChannel,
-    play,
-    stop,
-    setVolume,
-    toggleMute,
-    initEventListener,
-  } = usePlayerStore();
+  // Per-field selectors (not a whole-store destructure) so this large shell
+  // re-renders only on the slices it actually uses - not on every bitrate/poll
+  // update pushed into these stores. Actions are stable store references.
+  const channels = useChannelStore((s) => s.channels);
+  const channelMetadata = useChannelStore((s) => s.channelMetadata);
+  const nowPlaying = useChannelStore((s) => s.nowPlaying);
+  const fetchChannels = useChannelStore((s) => s.fetchChannels);
+  const pollNowPlaying = useChannelStore((s) => s.pollNowPlaying);
+  const fetchChannelMetadata = useChannelStore((s) => s.fetchChannelMetadata);
+  const playerStatus = usePlayerStore((s) => s.status);
+  const currentChannel = usePlayerStore((s) => s.currentChannel);
+  const volume = usePlayerStore((s) => s.volume);
+  const muted = usePlayerStore((s) => s.muted);
+  const errorMessage = usePlayerStore((s) => s.errorMessage);
+  const isBuffering = usePlayerStore((s) => s.isBuffering);
+  const selectChannel = usePlayerStore((s) => s.selectChannel);
+  const play = usePlayerStore((s) => s.play);
+  const stop = usePlayerStore((s) => s.stop);
+  const setVolume = usePlayerStore((s) => s.setVolume);
+  const toggleMute = usePlayerStore((s) => s.toggleMute);
+  const initEventListener = usePlayerStore((s) => s.initEventListener);
   const { loaded: libraryLoaded, load: loadLibrary, recordPlay, favorites, toggleFavorite } = useLibraryStore();
   const lastFmConnection = useScrobblingStore((state) => state.providers.lastfm);
   const scrobbleCoordinatorRef = useRef<ScrobbleCoordinator | null>(null);

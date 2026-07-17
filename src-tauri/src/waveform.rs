@@ -2,6 +2,7 @@ use rustfft::num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 use std::io::ErrorKind;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
@@ -181,6 +182,20 @@ pub struct SelectedAudioDevice {
 /// through it and `run_capture_loop` reopens capture on the new target.
 static WAVEFORM_DEVICE: OnceLock<watch::Sender<Option<SelectedAudioDevice>>> = OnceLock::new();
 
+/// Whether playback is currently active. While it's stopped the frontend
+/// ignores captured levels anyway, so `process_samples` skips the ~43×/sec FFT
+/// + Tauri emit entirely rather than grinding on silence. Toggled by the
+/// frontend via `waveform_set_active` on play/stop.
+static WAVEFORM_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Gates the capture->FFT->emit pipeline on whether playback is active. The
+/// capture source itself stays open (reopening it has latency and can fail), so
+/// the bars react instantly when playback resumes.
+#[tauri::command]
+pub fn waveform_set_active(active: bool) {
+    WAVEFORM_ACTIVE.store(active, Ordering::Relaxed);
+}
+
 /// Points the visualizer at a specific output device (or `None` for the system
 /// default). Applied live - the capture loop tears down the current source and
 /// reopens against the new device without restarting playback.
@@ -289,6 +304,12 @@ async fn process_samples(app: &AppHandle, mut rx: mpsc::Receiver<Vec<f32>>, samp
 
     let mut window: Vec<f32> = Vec::with_capacity(WINDOW_SIZE);
     while let Some(chunk) = rx.recv().await {
+        if !WAVEFORM_ACTIVE.load(Ordering::Relaxed) {
+            // Nothing playing - keep draining the source (so it doesn't back up
+            // and get torn down) but skip the FFT + emit; start fresh on resume.
+            window.clear();
+            continue;
+        }
         window.extend_from_slice(&chunk);
         while window.len() >= WINDOW_SIZE {
             let samples: Vec<f32> = window.drain(..WINDOW_SIZE).collect();

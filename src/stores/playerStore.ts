@@ -15,6 +15,7 @@ import {
 } from '../lib/mpvClient';
 import { buildStreamUrl, type XtreamCredentials } from '../lib/xtream';
 import { onMediaControlEvent, setMediaPlayback, setMediaVolume } from '../lib/mediaSession';
+import { setWaveformActive } from '../lib/waveform';
 import { useSettingsStore } from './settingsStore';
 
 // Plain console.* calls only reach a devtools console (invisible in a
@@ -174,6 +175,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const message = err instanceof Error ? err.message : String(err);
       logError(`connect failed for channel ${get().currentChannel?.name ?? streamId}: ${message}`);
       set({ status: 'error', errorMessage: message });
+      setWaveformActive(false);
       throw err;
     }
   }
@@ -211,6 +213,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     const errorMessage = `Failed to connect after ${MAX_CONNECT_ATTEMPTS} attempts${suffix}`;
     logError(errorMessage);
     set({ status: 'error', errorMessage });
+    setWaveformActive(false);
   }
 
   return {
@@ -228,9 +231,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       onMpvEvent((event) => {
         // Every mpv IPC message, not just the handful acted on below - the
         // main visibility gap when chasing an intermittent stall that never
-        // produces a hard 'error'. Debug level only (enable via Settings >
-        // Diagnostics > Verbose logging), so this doesn't spam by default.
-        logDebug(`mpv event: ${JSON.stringify(event)}`);
+        // produces a hard 'error'. Gate on the verbose-logging setting: mpv
+        // emits property-change events frequently during playback, and
+        // logDebug still pays JSON.stringify + Error().stack + a full IPC
+        // round-trip per call before the Rust-side level filter drops it, so
+        // building this unconditionally is wasted work when verbose is off.
+        if (useSettingsStore.getState().settings.verboseLogging) {
+          logDebug(`mpv event: ${JSON.stringify(event)}`);
+        }
 
         if (event.event === 'playback-restart') {
           if (get().status === 'loading') {
@@ -239,6 +247,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
             stopConnectTimeout();
             set({ status: 'playing', isBuffering: false });
             setMediaPlayback(true);
+            setWaveformActive(true);
             if (channel) startHeartbeat(channel.stream_id);
           }
         } else if (event.event === 'apogee-ipc-closed') {
@@ -251,6 +260,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
           const channel = get().currentChannel;
           logError(`mpv connection lost for channel ${channel?.name ?? channel?.stream_id}`);
           stopHeartbeat();
+          // Stop grinding the FFT on silence while we reconnect; a successful
+          // reconnect flips it back on via the playback-restart handler above.
+          setWaveformActive(false);
           if ((get().status === 'playing' || get().status === 'loading') && channel && lastStreamUrl) {
             connectAttempt = 0;
             connectToUrl(lastStreamUrl, channel.stream_id);
@@ -317,6 +329,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       connectAttempt = 0;
       await stopPlayback();
       set({ status: 'stopped', bitrateKbps: null, isBuffering: false });
+      setWaveformActive(false);
       await setMediaPlayback(false);
     },
 

@@ -528,7 +528,12 @@ async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String>
                     // issue, so log all of it at debug level rather than
                     // only the handful of events the frontend acts on.
                     log::debug!("mpv event: {value}");
-                    let _ = app_clone.emit("mpv-event", value);
+                    // Emit the original line string rather than the parsed
+                    // `value`, so Tauri ships the already-formed JSON instead of
+                    // walking and re-serializing the Value tree; the frontend
+                    // JSON.parses it once. (The parse above is still needed to
+                    // route the device-list reply.)
+                    let _ = app_clone.emit("mpv-event", line);
                 }
                 Err(e) => log::warn!("failed to parse mpv IPC line as JSON: {e} - line: {line}"),
             }
@@ -550,7 +555,9 @@ async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String>
         };
         log::error!("mpv IPC connection closed unexpectedly{suffix}");
         *inner_for_reader.lock().await = None;
-        let _ = app_clone.emit("mpv-event", json!({ "event": "apogee-ipc-closed" }));
+        // String payload to match the raw-line events emitted above (the
+        // frontend JSON.parses every mpv-event payload).
+        let _ = app_clone.emit("mpv-event", r#"{"event":"apogee-ipc-closed"}"#.to_string());
     });
 
     *guard = Some(Inner {

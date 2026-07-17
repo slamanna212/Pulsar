@@ -10,3 +10,10 @@ export function setWaveformDevice(
 ): Promise<void> {
   return invoke('waveform_set_device', { name, description });
 }
+
+// Gates the backend FFT/emit pipeline on whether playback is active - while
+// stopped the visualizer ignores captured levels anyway, so this stops the
+// ~43x/sec FFT + event emit from running on silence.
+export function setWaveformActive(active: boolean): Promise<void> {
+  return invoke('waveform_set_active', { active });
+}

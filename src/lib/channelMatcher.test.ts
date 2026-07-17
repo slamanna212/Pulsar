@@ -151,6 +151,37 @@ describe('buildNowPlayingMap', () => {
     );
     expect(map.has(1)).toBe(false);
   });
+
+  it('reuses the previous station object identity when rendered fields are unchanged', () => {
+    const cache = new Map<number, string>([[1, 's1']]);
+    const prevStation = station({ id: 's1', title: 'Same Song' });
+    const prev = new Map([[1, prevStation]]);
+    // A fresh response object with identical rendered fields (different object identity).
+    const next = buildNowPlayingMap(
+      [channel(1, 'Octane')],
+      [station({ id: 's1', title: 'Same Song' })],
+      cache,
+      prev,
+    );
+    expect(next.get(1)).toBe(prevStation);
+  });
+
+  it('gives a new station object only to the channel whose track changed', () => {
+    const cache = new Map<number, string>([[1, 's1'], [2, 's2']]);
+    const s1Prev = station({ id: 's1', title: 'A' });
+    const s2Prev = station({ id: 's2', title: 'B' });
+    const prev = new Map([[1, s1Prev], [2, s2Prev]]);
+    const next = buildNowPlayingMap(
+      [channel(1, 'One'), channel(2, 'Two')],
+      [station({ id: 's1', title: 'A' }), station({ id: 's2', title: 'B2' })],
+      cache,
+      prev,
+    );
+    // channel 1 unchanged -> reused identity; channel 2 changed -> new object
+    expect(next.get(1)).toBe(s1Prev);
+    expect(next.get(2)).not.toBe(s2Prev);
+    expect(next.get(2)?.title).toBe('B2');
+  });
 });
 
 describe('nowPlayingMapsEqual', () => {
@@ -192,5 +223,22 @@ describe('buildChannelMetadataMap', () => {
   it('leaves unmatched channels out of the map', () => {
     const map = buildChannelMetadataMap([channel(1, 'Nowhere FM')], [stellarChannel()]);
     expect(map.size).toBe(0);
+  });
+
+  it('uses the cached id without re-running the fuzzy match', () => {
+    const cache = new Map<number, string>([[1, 'cached']]);
+    // Renamed beyond any fuzzy match - only the cached id can link these.
+    const map = buildChannelMetadataMap(
+      [channel(1, 'Octane')],
+      [stellarChannel({ id: 'cached', name: 'Completely Different', marketing_name: 'Completely Different' })],
+      cache,
+    );
+    expect(map.get(1)?.id).toBe('cached');
+  });
+
+  it('populates the cache on a fresh match', () => {
+    const cache = new Map<number, string>();
+    buildChannelMetadataMap([channel(1, 'Octane')], [stellarChannel({ id: 'a', marketing_name: 'Octane' })], cache);
+    expect(cache.get(1)).toBe('a');
   });
 });

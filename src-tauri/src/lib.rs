@@ -37,6 +37,7 @@ pub fn run() {
             mpv::mpv_list_audio_devices,
             mpv::mpv_get_stderr_tail,
             waveform::waveform_set_device,
+            waveform::waveform_set_active,
             secrets::secrets_set,
             secrets::secrets_get,
             secrets::secrets_delete,

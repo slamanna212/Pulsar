@@ -1,5 +1,6 @@
 use std::{
     path::{Path, PathBuf},
+    sync::LazyLock,
     time::{Duration, SystemTime},
 };
 
@@ -9,6 +10,17 @@ const TUNE_EVENT: &str = "notification-tune";
 const TUNE_ACTION: &str = "tune";
 const MAX_ARTWORK_BYTES: usize = 3 * 1024 * 1024;
 const ARTWORK_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+
+// One shared client for artwork fetches (connection pool + keep-alive) instead
+// of rebuilding a Client - and a new TLS handshake - per cache miss. Falls back
+// to a default client if the configured builder ever fails to initialize.
+static ARTWORK_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .user_agent("Apogee notification artwork")
+        .build()
+        .unwrap_or_default()
+});
 
 fn artwork_extension(content_type: Option<&str>, path: &str) -> Option<&'static str> {
     let mime = content_type
@@ -97,18 +109,7 @@ async fn cache_artwork(app: &tauri::AppHandle, artwork_url: Option<&str>) -> Opt
         }
     }
 
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(3))
-        .user_agent("Apogee notification artwork")
-        .build()
-    {
-        Ok(client) => client,
-        Err(error) => {
-            log::warn!("could not initialize notification artwork client: {error}");
-            return None;
-        }
-    };
-    let mut response = match client
+    let mut response = match ARTWORK_HTTP
         .get(url)
         .send()
         .await

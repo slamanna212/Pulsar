@@ -36,6 +36,9 @@ vi.mock('../lib/mediaSession', () => ({
   setMediaPlayback: vi.fn().mockResolvedValue(undefined),
   setMediaVolume: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('../lib/waveform', () => ({
+  setWaveformActive: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('./settingsStore', () => ({
   useSettingsStore: { getState: () => ({ update: settingsUpdate, settings: { audioDevice: null } }) },
 }));

@@ -9,17 +9,18 @@ interface JumpRailProps {
   groups: JumpGroup[];
   totalCount: number;
   containerRef: RefObject<HTMLDivElement | null>;
+  /** Scrolls the (virtualized) list so the given item index is at the top. */
+  onJump: (itemIndex: number) => void;
 }
 
 /**
- * Plex-style sticky index. Jumping measures the real DOM position of the
- * target item's row (via the item's own element, since grid rows share a
- * top edge) rather than estimating proportionally - a proportional guess
- * can land mid-row in the multi-column grid view and clip the row above it.
- * The active-label highlight on scroll is still a proportional estimate,
- * which is fine since it only needs to be approximately right.
+ * Plex-style sticky index. Jumping delegates to the list virtualizer's
+ * index-based scroll (`onJump`), which lands the target row at the top even
+ * when it isn't currently mounted. The active-label highlight on scroll is a
+ * proportional estimate, which is fine since it only needs to be approximately
+ * right.
  */
-export function JumpRail({ groups, totalCount, containerRef }: JumpRailProps) {
+export function JumpRail({ groups, totalCount, containerRef, onJump }: JumpRailProps) {
   const [active, setActive] = useState(groups[0]?.label);
 
   useEffect(() => {
@@ -43,15 +44,9 @@ export function JumpRail({ groups, totalCount, containerRef }: JumpRailProps) {
   }, [groups, totalCount, containerRef]);
 
   function jumpTo(group: JumpGroup) {
-    const el = containerRef.current;
-    if (!el) return;
-    const itemEl = el.firstElementChild?.children[group.index] as HTMLElement | undefined;
-    if (itemEl) {
-      el.scrollTop += itemEl.getBoundingClientRect().top - el.getBoundingClientRect().top;
-      return;
-    }
-    const ratio = totalCount > 0 ? group.index / totalCount : 0;
-    el.scrollTop = ratio * (el.scrollHeight - el.clientHeight);
+    // The list is virtualized, so the target item may not be in the DOM to
+    // measure - defer to the virtualizer's own index-based scroll.
+    onJump(group.index);
   }
 
   if (groups.length === 0) return null;
