@@ -27,6 +27,7 @@ vi.mock('../lib/mpvClient', () => ({
   loadUrl: vi.fn().mockResolvedValue(undefined),
   onMpvEvent: vi.fn().mockResolvedValue(() => {}),
   stopPlayback: vi.fn().mockResolvedValue(undefined),
+  setProperty: vi.fn().mockResolvedValue(undefined),
   setVolume: vi.fn().mockResolvedValue(undefined),
   setMute: vi.fn().mockResolvedValue(undefined),
 }));
@@ -36,7 +37,7 @@ vi.mock('../lib/mediaSession', () => ({
   setMediaVolume: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('./settingsStore', () => ({
-  useSettingsStore: { getState: () => ({ update: settingsUpdate }) },
+  useSettingsStore: { getState: () => ({ update: settingsUpdate, settings: { audioDevice: null } }) },
 }));
 
 const creds: XtreamCredentials = {
