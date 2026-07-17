@@ -1,12 +1,15 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Text } from '@mantine/core';
 import { IconLayoutGrid, IconLayoutList, IconSearch, IconX } from '@tabler/icons-react';
+import { debug as logDebug } from '@tauri-apps/plugin-log';
 import { ChannelCard, CHANNEL_CARD_MIN_WIDTH, CHANNEL_CARD_GAP } from './ChannelCard';
 import { ChannelListRow } from './ChannelListRow';
 import { JumpRail } from './JumpRail';
 import type { XtreamChannel } from '../types/xtream';
 import type { StellarChannel, StellarStation } from '../types/stellarTunerLog';
 import type { SortMode, ViewMode } from '../stores/libraryStore';
+
+const SEARCH_DEBOUNCE_MS = 150;
 
 interface ChannelGridProps {
   title: string;
@@ -46,9 +49,15 @@ export function ChannelGrid({
   const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
   const sortable = sortMode != null && onSortModeChange != null;
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearchTerm(searchTerm), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
 
   const filtered = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
+    const q = debouncedSearchTerm.trim().toLowerCase();
     if (!q) return channels;
     return channels.filter((c) => {
       const name = (channelMetadata.get(c.stream_id)?.marketing_name || c.name).toLowerCase();
@@ -56,7 +65,13 @@ export function ChannelGrid({
       const station = nowPlaying?.get(c.stream_id);
       return !!station && (station.title.toLowerCase().includes(q) || station.artist.toLowerCase().includes(q));
     });
-  }, [channels, channelMetadata, searchTerm, nowPlaying]);
+  }, [channels, channelMetadata, debouncedSearchTerm, nowPlaying]);
+
+  useEffect(() => {
+    if (debouncedSearchTerm) {
+      logDebug(`search: "${debouncedSearchTerm}" -> ${filtered.length}/${channels.length} channels`);
+    }
+  }, [debouncedSearchTerm, filtered.length, channels.length]);
 
   const sorted = useMemo(() => {
     if (!sortable) return filtered;

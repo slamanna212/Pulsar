@@ -13,6 +13,13 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Default panic behavior prints to stderr, which is invisible once the app is
+    // launched as a bundled binary (not from a terminal) - route panics into the
+    // rotating log file instead so they're visible in exported logs.
+    std::panic::set_hook(Box::new(|info| {
+        log::error!("panic: {info}");
+    }));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
