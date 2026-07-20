@@ -42,7 +42,7 @@ rustfft = "=6.4.1"
 url = "=2.5.8"
 time = { version = "=0.3.53", features = ["parsing", "formatting"] }
 reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls", "stream"] }
-md5 = "=0.8.0"
+md5 = "=0.8.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "=3.6.3", features = ["sync-secret-service"] }
