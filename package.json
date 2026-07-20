@@ -17,8 +17,8 @@
     "fetch:mpv": "node scripts/fetch-mpv.mjs"
   },
   "dependencies": {
-    "@fontsource/sora": "5.2.8",
-    "@fontsource/space-grotesk": "5.2.10",
+    "@fontsource/sora": "5.3.0",
+    "@fontsource/space-grotesk": "5.3.0",
     "@mantine/core": "9.4.1",
     "@mantine/hooks": "9.4.1",
     "@mantine/notifications": "9.4.1",
