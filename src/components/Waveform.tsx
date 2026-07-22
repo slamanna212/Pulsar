@@ -38,6 +38,16 @@ export function Waveform({ active, bands = 8, size = 'md' }: WaveformProps) {
   }, []);
 
   useEffect(() => {
+    // While stopped there's nothing to animate - park every bar at BASELINE
+    // once and don't schedule a permanent 60fps rAF loop over silence. The
+    // effect re-runs when `active` flips, restarting the loop on playback.
+    if (!active) {
+      barRefs.current.forEach((el) => {
+        if (el) el.style.transform = `scaleY(${BASELINE})`;
+      });
+      return;
+    }
+
     let raf: number;
     const start = performance.now();
 
@@ -49,17 +59,16 @@ export function Waveform({ active, bands = 8, size = 'md' }: WaveformProps) {
       barRefs.current.forEach((el, i) => {
         if (!el) return;
         let amplitude = 0;
-        if (active && realLevels && realLevels.length > 0) {
+        if (realLevels && realLevels.length > 0) {
           const bandIndex = Math.min(realLevels.length - 1, Math.floor((i / bands) * realLevels.length));
           amplitude = realLevels[bandIndex] ?? 0;
-        } else if (active) {
+        } else {
           // No real capture backend available yet on this platform/session.
           const phase = i * 0.7;
           const speed = 1 + (i % 3) * 0.25;
           amplitude = 0.3 + 0.25 * ((Math.sin(t * speed * 4 + phase) + 1) / 2);
         }
-        const scale = active ? BASELINE + amplitude * 0.88 : BASELINE;
-        el.style.transform = `scaleY(${scale})`;
+        el.style.transform = `scaleY(${BASELINE + amplitude * 0.88})`;
       });
 
       raf = requestAnimationFrame(tick);

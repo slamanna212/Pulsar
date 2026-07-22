@@ -27,6 +27,10 @@ export function setVolume(volume: number): Promise<void> {
   return invoke('mpv_set_volume', { volume });
 }
 
+export function setEqualizer(enabled: boolean, gains: readonly number[]): Promise<void> {
+  return invoke('mpv_set_equalizer', { enabled, gains });
+}
+
 export function setProperty(name: string, value: unknown): Promise<void> {
   return invoke('mpv_set_property', { name, value });
 }
@@ -39,10 +43,30 @@ export function getProperty(name: string): Promise<void> {
   return invoke('mpv_get_property', { name });
 }
 
+export interface AudioDevice {
+  name: string;
+  description: string;
+}
+
+// Enumerates mpv's available output devices. Spawns mpv idle on demand if it
+// isn't already running, so it can be called before any playback has started.
+export function listAudioDevices(): Promise<AudioDevice[]> {
+  return invoke('mpv_list_audio_devices');
+}
+
 export function getStderrTail(): Promise<string> {
   return invoke('mpv_get_stderr_tail');
 }
 
 export function onMpvEvent(callback: (event: MpvPropertyChangeEvent) => void): Promise<UnlistenFn> {
-  return listen<MpvPropertyChangeEvent>('mpv-event', (e) => callback(e.payload));
+  // The Rust side emits each mpv IPC line as a raw JSON string (avoiding a
+  // re-serialization of the parsed value); parse it once here.
+  return listen<string>('mpv-event', (e) => {
+    try {
+      callback(JSON.parse(e.payload) as MpvPropertyChangeEvent);
+    } catch {
+      // A malformed line shouldn't take down the listener; the Rust side
+      // already logs parse failures on its end.
+    }
+  });
 }

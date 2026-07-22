@@ -6,7 +6,7 @@ use std::sync::{Arc, OnceLock};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
 
 /// Per-process IPC path (rather than a single fixed name) so a stale/
 /// abandoned socket from another instance can never collide with, or be
@@ -23,6 +23,11 @@ fn ipc_path() -> &'static str {
 }
 
 const STDERR_TAIL_LINES: usize = 40;
+const EQUALIZER_FREQUENCIES: [u32; 10] =
+    [31, 62, 125, 250, 500, 1_000, 2_000, 4_000, 8_000, 16_000];
+const EQUALIZER_MIN_GAIN_DB: f64 = -12.0;
+const EQUALIZER_MAX_GAIN_DB: f64 = 12.0;
+const EQUALIZER_FILTER_LABEL: &str = "@apogee_eq";
 
 /// Caps applied to `read_bounded_line` so a malformed or hostile write to the
 /// mpv IPC socket/stderr pipe (see `ipc_path`'s doc comment for why the
@@ -88,6 +93,21 @@ struct Inner {
 pub struct MpvState {
     inner: Arc<Mutex<Option<Inner>>>,
     stderr_tail: Arc<Mutex<VecDeque<String>>>,
+    // Holds the reply sink for an in-flight `mpv_list_audio_devices` call. The
+    // IPC read loop fulfills it when a message tagged with
+    // `LIST_AUDIO_DEVICES_REQUEST_ID` arrives, correlating the async reply
+    // without a full request-tracking table (same approach as
+    // `GET_PROPERTY_REQUEST_ID`, but request/response instead of event-stream).
+    pending_device_list: Arc<Mutex<Option<oneshot::Sender<Value>>>>,
+}
+
+/// One entry from mpv's `audio-device-list` property: `name` is what gets fed
+/// back to `set_property audio-device`, `description` is the human label.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AudioDevice {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 /// Prefers a bundled mpv (Windows, Linux AppImage) over PATH lookup (Linux
@@ -480,6 +500,7 @@ async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String>
     let app_clone = app.clone();
     let inner_for_reader = state.inner.clone();
     let stderr_tail_for_reader = state.stderr_tail.clone();
+    let pending_device_list_for_reader = state.pending_device_list.clone();
     tokio::spawn(async move {
         let mut reader = BufReader::new(read_half);
         loop {
@@ -493,6 +514,18 @@ async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String>
             };
             match serde_json::from_str::<Value>(&line) {
                 Ok(value) => {
+                    // A reply to an in-flight mpv_list_audio_devices request is
+                    // routed straight back to that caller (and not re-emitted
+                    // as a UI event) - it's a one-off request/response, not
+                    // part of the mpv-event stream the frontend interprets.
+                    if value.get("request_id").and_then(Value::as_i64)
+                        == Some(LIST_AUDIO_DEVICES_REQUEST_ID)
+                    {
+                        if let Some(tx) = pending_device_list_for_reader.lock().await.take() {
+                            let _ = tx.send(value.get("data").cloned().unwrap_or(Value::Null));
+                            continue;
+                        }
+                    }
                     // Every message mpv sends over IPC (property changes,
                     // pause/unpause, playback-restart, end-file, etc.) - the
                     // none-observed properties this doesn't cover are the
@@ -500,7 +533,12 @@ async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String>
                     // issue, so log all of it at debug level rather than
                     // only the handful of events the frontend acts on.
                     log::debug!("mpv event: {value}");
-                    let _ = app_clone.emit("mpv-event", value);
+                    // Emit the original line string rather than the parsed
+                    // `value`, so Tauri ships the already-formed JSON instead of
+                    // walking and re-serializing the Value tree; the frontend
+                    // JSON.parses it once. (The parse above is still needed to
+                    // route the device-list reply.)
+                    let _ = app_clone.emit("mpv-event", line);
                 }
                 Err(e) => log::warn!("failed to parse mpv IPC line as JSON: {e} - line: {line}"),
             }
@@ -522,7 +560,9 @@ async fn ensure_started(app: &AppHandle, state: &MpvState) -> Result<(), String>
         };
         log::error!("mpv IPC connection closed unexpectedly{suffix}");
         *inner_for_reader.lock().await = None;
-        let _ = app_clone.emit("mpv-event", json!({ "event": "apogee-ipc-closed" }));
+        // String payload to match the raw-line events emitted above (the
+        // frontend JSON.parses every mpv-event payload).
+        let _ = app_clone.emit("mpv-event", r#"{"event":"apogee-ipc-closed"}"#.to_string());
     });
 
     *guard = Some(Inner {
@@ -616,6 +656,67 @@ pub async fn mpv_set_volume(state: State<'_, MpvState>, volume: u8) -> Result<()
     .await
 }
 
+/// Builds one labeled libavfilter graph containing the app's complete EQ.
+/// Keeping the ten bands inside one labeled mpv filter lets us replace/remove
+/// Apogee's EQ without disturbing audio filters from the user's mpv config.
+fn build_equalizer_filter(enabled: bool, gains: &[f64]) -> Result<Option<String>, String> {
+    if gains.len() != EQUALIZER_FREQUENCIES.len() {
+        return Err(format!(
+            "equalizer requires exactly {} bands",
+            EQUALIZER_FREQUENCIES.len()
+        ));
+    }
+    if gains.iter().any(|gain| {
+        !gain.is_finite() || !(EQUALIZER_MIN_GAIN_DB..=EQUALIZER_MAX_GAIN_DB).contains(gain)
+    }) {
+        return Err("equalizer gains must be finite values from -12 to +12 dB".to_string());
+    }
+    if !enabled || gains.iter().all(|gain| *gain == 0.0) {
+        return Ok(None);
+    }
+
+    let max_boost = gains.iter().copied().fold(0.0_f64, f64::max);
+    let mut filters = Vec::with_capacity(EQUALIZER_FREQUENCIES.len() + 1);
+    if max_boost > 0.0 {
+        // Pull the entire signal down by the largest boost so the shaped
+        // bands retain headroom instead of clipping at 0 dBFS.
+        filters.push(format!("volume=-{max_boost}dB"));
+    }
+    filters.extend(
+        EQUALIZER_FREQUENCIES
+            .iter()
+            .zip(gains)
+            .map(|(frequency, gain)| format!("equalizer=f={frequency}:t=o:w=1:g={gain}")),
+    );
+
+    Ok(Some(format!(
+        "{EQUALIZER_FILTER_LABEL}:lavfi=[{}]",
+        filters.join(",")
+    )))
+}
+
+#[tauri::command]
+pub async fn mpv_set_equalizer(
+    state: State<'_, MpvState>,
+    enabled: bool,
+    gains: Vec<f64>,
+) -> Result<(), String> {
+    let filter = build_equalizer_filter(enabled, &gains)?;
+
+    // `af remove` is harmless when the label is absent. Removing first avoids
+    // stacking filters after repeated slider changes while preserving every
+    // non-Apogee filter in mpv's chain.
+    send_command(
+        &state,
+        json!({ "command": ["af", "remove", EQUALIZER_FILTER_LABEL] }),
+    )
+    .await?;
+    if let Some(filter) = filter {
+        send_command(&state, json!({ "command": ["af", "add", filter] })).await?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn mpv_set_property(state: State<'_, MpvState>, name: String, value: Value) -> Result<(), String> {
     send_command(&state, json!({ "command": ["set_property", name, value] })).await
@@ -634,10 +735,79 @@ pub async fn mpv_get_property(state: State<'_, MpvState>, name: String) -> Resul
     .await
 }
 
+/// Fixed request_id for the `audio-device-list` read issued by
+/// `mpv_list_audio_devices`. Distinct from `GET_PROPERTY_REQUEST_ID` so its
+/// (array) reply is routed to the awaiting caller instead of the frontend's
+/// numeric-only get-reply handler.
+const LIST_AUDIO_DEVICES_REQUEST_ID: i64 = 778;
+
+/// Enumerates mpv's available audio output devices (name + description) so the
+/// frontend can offer an output-device picker. Ensures mpv is running (it's
+/// spawned idle on demand), then issues a one-off get_property whose reply the
+/// IPC read loop hands back through `pending_device_list`.
+#[tauri::command]
+pub async fn mpv_list_audio_devices(
+    app: AppHandle,
+    state: State<'_, MpvState>,
+) -> Result<Vec<AudioDevice>, String> {
+    ensure_started(&app, &state).await?;
+
+    let (tx, rx) = oneshot::channel();
+    *state.pending_device_list.lock().await = Some(tx);
+
+    send_command(
+        &state,
+        json!({ "command": ["get_property", "audio-device-list"], "request_id": LIST_AUDIO_DEVICES_REQUEST_ID }),
+    )
+    .await?;
+
+    let data = match tokio::time::timeout(std::time::Duration::from_secs(5), rx).await {
+        Ok(Ok(data)) => data,
+        Ok(Err(_)) => return Err("audio device list request was cancelled".to_string()),
+        Err(_) => {
+            *state.pending_device_list.lock().await = None;
+            return Err("timed out reading audio device list from mpv".to_string());
+        }
+    };
+
+    serde_json::from_value(data)
+        .map_err(|e| format!("failed to parse audio device list: {e}"))
+}
+
 /// Exposes mpv's recent stderr output (already tracked in `stderr_tail` for
 /// spawn-failure error messages) so the frontend can attach diagnostic
 /// context when a load stalls or fails after mpv started successfully.
 #[tauri::command]
 pub async fn mpv_get_stderr_tail(state: State<'_, MpvState>) -> Result<String, String> {
     Ok(stderr_tail_string(&state.stderr_tail).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn equalizer_filter_is_labeled_and_adds_automatic_headroom() {
+        let filter =
+            build_equalizer_filter(true, &[6.0, 5.0, 4.0, 2.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0])
+                .unwrap()
+                .unwrap();
+
+        assert!(filter.starts_with("@apogee_eq:lavfi=[volume=-6dB,"));
+        assert!(filter.contains("equalizer=f=31:t=o:w=1:g=6"));
+        assert!(filter.contains("equalizer=f=16000:t=o:w=1:g=0"));
+    }
+
+    #[test]
+    fn disabled_or_flat_equalizer_needs_no_filter() {
+        assert_eq!(build_equalizer_filter(false, &[2.0; 10]).unwrap(), None);
+        assert_eq!(build_equalizer_filter(true, &[0.0; 10]).unwrap(), None);
+    }
+
+    #[test]
+    fn equalizer_rejects_bad_band_counts_and_gains() {
+        assert!(build_equalizer_filter(true, &[0.0; 9]).is_err());
+        assert!(build_equalizer_filter(true, &[13.0; 10]).is_err());
+        assert!(build_equalizer_filter(true, &[f64::NAN; 10]).is_err());
+    }
 }

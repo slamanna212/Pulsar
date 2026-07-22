@@ -22,13 +22,10 @@ jobs:
       prerelease: ${{ steps.prerelease.outputs.value }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Install GitHub CLI
-        uses: ./.github/actions/setup-gh-cli
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
 
@@ -66,10 +63,10 @@ jobs:
     runs-on: rapture-apogee
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
@@ -86,10 +83,10 @@ jobs:
     runs-on: rapture-apogee
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
@@ -110,10 +107,7 @@ jobs:
       release_id: ${{ steps.create.outputs.release_id }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Install GitHub CLI
-        uses: ./.github/actions/setup-gh-cli
+        uses: actions/checkout@v7
 
       - name: Create draft release
         id: create
@@ -130,7 +124,8 @@ jobs:
               --title "Release $TAG" --notes "Full changelogs on GitHub." \
               --target "$(git rev-parse HEAD)" --repo "${{ github.repository }}"
           fi
-          RELEASE_ID=$(gh release view "$TAG" --repo "${{ github.repository }}" --json databaseId --jq .databaseId)
+          RELEASE_ID=$(TAG="$TAG" gh api --paginate "repos/${{ github.repository }}/releases" \
+            --jq '.[] | select(.tag_name == env.TAG) | .id' | head -n1)
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
   build:
@@ -152,14 +147,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Install GitHub CLI
-        if: matrix.platform == 'ubuntu-22.04'
-        uses: ./.github/actions/setup-gh-cli
+        uses: actions/checkout@v7
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-22.04' && runner.environment == 'github-hosted'
         run: |
           sudo add-apt-repository -y universe
           sudo apt-get update
@@ -168,12 +159,13 @@ jobs:
             pkg-config libglib2.0-bin libgtk-3-bin libgdk-pixbuf2.0-bin desktop-file-utils zsync
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Setup Rust
+        if: matrix.platform != 'ubuntu-22.04' || runner.environment == 'github-hosted'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Add macOS Rust targets
@@ -202,7 +194,7 @@ jobs:
           VERSION="$VERSION" perl -i -pe 'BEGIN{$done=0} if (!$done && s/^version = ".*"/version = "$ENV{VERSION}"/) { $done=1 }' src-tauri/Cargo.toml
 
       - name: Build and release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -224,6 +216,39 @@ jobs:
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
           releaseDraft: true
           prerelease: ${{ needs.check-version.outputs.prerelease == 'true' }}
+
+      - name: Validate packaged macOS application
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle/macos/Apogee.app"
+          INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
+          EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Apogee"
+
+          USAGE_DESCRIPTION=$(/usr/libexec/PlistBuddy -c 'Print :NSAudioCaptureUsageDescription' "$INFO_PLIST")
+          test -n "$USAGE_DESCRIPTION"
+
+          ARCHITECTURES=$(lipo -archs "$EXECUTABLE")
+          case " $ARCHITECTURES " in *" arm64 "*) ;; *) echo "missing arm64 architecture: $ARCHITECTURES"; exit 1 ;; esac
+          case " $ARCHITECTURES " in *" x86_64 "*) ;; *) echo "missing x86_64 architecture: $ARCHITECTURES"; exit 1 ;; esac
+
+          STDOUT_LOG="$RUNNER_TEMP/apogee-smoke.stdout"
+          STDERR_LOG="$RUNNER_TEMP/apogee-smoke.stderr"
+          "$EXECUTABLE" >"$STDOUT_LOG" 2>"$STDERR_LOG" &
+          APP_PID=$!
+          cleanup() {
+            kill "$APP_PID" 2>/dev/null || true
+            wait "$APP_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          sleep 8
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "Apogee exited during the macOS launch smoke test"
+            cat "$STDOUT_LOG"
+            cat "$STDERR_LOG"
+            exit 1
+          fi
 
       - name: Upload stable-named download aliases
         shell: bash
@@ -257,10 +282,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Install GitHub CLI
-        uses: ./.github/actions/setup-gh-cli
+        uses: actions/checkout@v7
 
       - name: Delete incomplete release on build failure
         if: needs.build.result != 'success'

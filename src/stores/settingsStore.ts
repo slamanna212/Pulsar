@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import { getSecret, setSecret, getBuiltinStellarApiKey, SECRET_KEYS } from '../lib/secrets';
+import { DEFAULT_EQUALIZER, normalizeEqualizerSettings, type EqualizerSettings } from '../lib/equalizer';
 
 export type UpdateChannel = 'stable' | 'beta';
 
@@ -8,6 +9,14 @@ export interface ScrobblingSettings {
   lastfm: {
     enabled: boolean;
   };
+}
+
+/** A chosen audio output device. `name` is mpv's `audio-device-list` name
+ *  (the shared identity used for both playback and the visualizer); `description`
+ *  is its friendly label. `null` in settings means "system default". */
+export interface AudioDeviceSelection {
+  name: string;
+  description: string;
 }
 
 export interface Settings {
@@ -25,6 +34,8 @@ export interface Settings {
   discordRpcEnabled: boolean;
   scrobbling: ScrobblingSettings;
   lastSleepTimerMinutes: number;
+  audioDevice: AudioDeviceSelection | null;
+  equalizer: EqualizerSettings;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -42,6 +53,8 @@ export const DEFAULT_SETTINGS: Settings = {
   discordRpcEnabled: false,
   scrobbling: { lastfm: { enabled: false } },
   lastSleepTimerMinutes: 30,
+  audioDevice: null,
+  equalizer: DEFAULT_EQUALIZER,
 };
 
 type PersistedSettings = Omit<Settings, 'password'>;
@@ -104,6 +117,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ...DEFAULT_SETTINGS,
         ...(stored as Partial<PersistedSettings>),
         volume: typeof stored.volume === 'number' ? stored.volume : (legacyDefaultVolume ?? DEFAULT_SETTINGS.volume),
+        equalizer: normalizeEqualizerSettings(stored.equalizer),
         password: password ?? '',
         onboardingComplete: isPreOnboardingInstall || Boolean(stored.onboardingComplete),
       },

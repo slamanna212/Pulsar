@@ -1,12 +1,21 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Text } from '@mantine/core';
 import { IconLayoutGrid, IconLayoutList, IconSearch, IconX } from '@tabler/icons-react';
+import { debug as logDebug } from '@tauri-apps/plugin-log';
 import { ChannelCard, CHANNEL_CARD_MIN_WIDTH, CHANNEL_CARD_GAP } from './ChannelCard';
 import { ChannelListRow } from './ChannelListRow';
 import { JumpRail } from './JumpRail';
+import { buildNumericJumpGroups } from '../lib/channelJumpGroups';
+import { channelMatchesSearch } from '../lib/channelSearch';
 import type { XtreamChannel } from '../types/xtream';
 import type { StellarChannel, StellarStation } from '../types/stellarTunerLog';
 import type { SortMode, ViewMode } from '../stores/libraryStore';
+
+const SEARCH_DEBOUNCE_MS = 150;
+const JUMP_LABEL_HEIGHT = 12;
+const JUMP_LABEL_GAP = 2;
+const DEFAULT_MAX_JUMP_GROUPS = 25;
 
 interface ChannelGridProps {
   title: string;
@@ -46,17 +55,31 @@ export function ChannelGrid({
   const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
   const sortable = sortMode != null && onSortModeChange != null;
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearchTerm(searchTerm), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
 
   const filtered = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
+    const q = debouncedSearchTerm.trim().toLowerCase();
     if (!q) return channels;
-    return channels.filter((c) => {
-      const name = (channelMetadata.get(c.stream_id)?.marketing_name || c.name).toLowerCase();
-      if (name.includes(q)) return true;
-      const station = nowPlaying?.get(c.stream_id);
-      return !!station && (station.title.toLowerCase().includes(q) || station.artist.toLowerCase().includes(q));
-    });
-  }, [channels, channelMetadata, searchTerm, nowPlaying]);
+    return channels.filter((channel) =>
+      channelMatchesSearch(
+        channel,
+        channelMetadata.get(channel.stream_id),
+        nowPlaying?.get(channel.stream_id),
+        q,
+      ),
+    );
+  }, [channels, channelMetadata, debouncedSearchTerm, nowPlaying]);
+
+  useEffect(() => {
+    if (debouncedSearchTerm) {
+      logDebug(`search: "${debouncedSearchTerm}" -> ${filtered.length}/${channels.length} channels`);
+    }
+  }, [debouncedSearchTerm, filtered.length, channels.length]);
 
   const sorted = useMemo(() => {
     if (!sortable) return filtered;
@@ -77,22 +100,85 @@ export function ChannelGrid({
     return list;
   }, [filtered, channelMetadata, sortMode, sortable]);
 
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const maxNumericJumpGroups = containerSize.height > 0
+    ? Math.max(1, Math.floor((containerSize.height + JUMP_LABEL_GAP) / (JUMP_LABEL_HEIGHT + JUMP_LABEL_GAP)))
+    : DEFAULT_MAX_JUMP_GROUPS;
+
   const groups = useMemo(() => {
     if (!sortable) return [];
+
+    if (sortMode === 'channel_number') {
+      return buildNumericJumpGroups(
+        sorted.map((channel) => channelMetadata.get(channel.stream_id)?.channel_number ?? channel.num),
+        maxNumericJumpGroups,
+      );
+    }
+
     const seen = new Set<string>();
     const result: { label: string; index: number }[] = [];
     sorted.forEach((channel, index) => {
-      const label =
-        sortMode === 'az'
-          ? (channelMetadata.get(channel.stream_id)?.marketing_name || channel.name).charAt(0).toUpperCase()
-          : `${Math.floor((channelMetadata.get(channel.stream_id)?.channel_number ?? channel.num) / 10) * 10}`;
+      const label = (channelMetadata.get(channel.stream_id)?.marketing_name || channel.name).charAt(0).toUpperCase();
       if (!seen.has(label)) {
         seen.add(label);
         result.push({ label, index });
       }
     });
     return result;
-  }, [sorted, sortMode, channelMetadata, sortable]);
+  }, [sorted, sortMode, channelMetadata, sortable, maxNumericJumpGroups]);
+
+  // Virtualization: only the visible cards/rows are mounted, so a full-category
+  // list (hundreds of channels, each an expensive backdrop-filter card) doesn't
+  // pay layout/paint for offscreen items. The scroll container (containerRef) is
+  // the virtualizer's scroll element in both modes.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerSize({ width: el.clientWidth, height: el.clientHeight });
+    const ro = new ResizeObserver((entries) => {
+      const size = entries[0]?.contentRect;
+      if (size) setContainerSize({ width: size.width, height: size.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sorted.length]);
+
+  // clientWidth already excludes the container's own left/right padding, so the
+  // grid columns follow the same auto-fill math the CSS grid would use.
+  const columns = Math.max(
+    1,
+    Math.floor((containerSize.width + CHANNEL_CARD_GAP) / (CHANNEL_CARD_MIN_WIDTH + CHANNEL_CARD_GAP)),
+  );
+  const lanes = viewMode === 'grid' ? columns : 1;
+  const rowCount = Math.ceil(sorted.length / lanes);
+  // Grid rows are ~square card + label block; list rows are the fixed ChannelListRow.
+  // Real heights are re-measured after mount via measureElement, so these are just
+  // the initial estimate that keeps the scrollbar roughly right before measurement.
+  const estimatedRowHeight =
+    viewMode === 'grid'
+      ? Math.round((containerSize.width - CHANNEL_CARD_GAP * (columns - 1)) / columns) + 62
+      : 122;
+
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => estimatedRowHeight,
+    overscan: 4,
+    gap: viewMode === 'grid' ? CHANNEL_CARD_GAP : 10,
+  });
+
+  // Re-measure when the layout basis changes (mode switch, column count, filter).
+  useEffect(() => {
+    rowVirtualizer.measure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, columns, sorted.length]);
+
+  const scrollToItemIndex = useCallback(
+    (itemIndex: number) => {
+      rowVirtualizer.scrollToIndex(Math.floor(itemIndex / lanes), { align: 'start' });
+    },
+    [rowVirtualizer, lanes],
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -172,41 +258,61 @@ export function ChannelGrid({
       ) : (
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
           <div ref={containerRef} style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 4px 4px' }}>
-            {viewMode === 'grid' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${CHANNEL_CARD_MIN_WIDTH}px, 1fr))`, gap: CHANNEL_CARD_GAP }}>
-                {sorted.map((channel) => (
-                  <ChannelCard
-                    key={channel.stream_id}
-                    channel={channel}
-                    metadata={channelMetadata.get(channel.stream_id)}
-                    isFavorite={favoriteSet.has(channel.stream_id)}
-                    isPlaying={channel.stream_id === currentChannelId}
-                    onToggleFavorite={onToggleFavorite}
-                    onClick={onPlay}
-                    onInfo={onSelect}
-                    nowPlaying={nowPlaying?.get(channel.stream_id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {sorted.map((channel) => (
-                  <ChannelListRow
-                    key={channel.stream_id}
-                    channel={channel}
-                    metadata={channelMetadata.get(channel.stream_id)}
-                    isFavorite={favoriteSet.has(channel.stream_id)}
-                    isPlaying={channel.stream_id === currentChannelId}
-                    onToggleFavorite={onToggleFavorite}
-                    onClick={onPlay}
-                    onInfo={onSelect}
-                    nowPlaying={nowPlaying?.get(channel.stream_id)}
-                  />
-                ))}
-              </div>
-            )}
+            <div style={{ position: 'relative', height: rowVirtualizer.getTotalSize(), width: '100%' }}>
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const rowItems = sorted.slice(virtualRow.index * lanes, virtualRow.index * lanes + lanes);
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    {viewMode === 'grid' ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: CHANNEL_CARD_GAP }}>
+                        {rowItems.map((channel) => (
+                          <ChannelCard
+                            key={channel.stream_id}
+                            channel={channel}
+                            metadata={channelMetadata.get(channel.stream_id)}
+                            isFavorite={favoriteSet.has(channel.stream_id)}
+                            isPlaying={channel.stream_id === currentChannelId}
+                            onToggleFavorite={onToggleFavorite}
+                            onClick={onPlay}
+                            onInfo={onSelect}
+                            nowPlaying={nowPlaying?.get(channel.stream_id)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      rowItems.map((channel) => (
+                        <ChannelListRow
+                          key={channel.stream_id}
+                          channel={channel}
+                          metadata={channelMetadata.get(channel.stream_id)}
+                          isFavorite={favoriteSet.has(channel.stream_id)}
+                          isPlaying={channel.stream_id === currentChannelId}
+                          onToggleFavorite={onToggleFavorite}
+                          onClick={onPlay}
+                          onInfo={onSelect}
+                          nowPlaying={nowPlaying?.get(channel.stream_id)}
+                        />
+                      ))
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          {sortable && !searchTerm && <JumpRail groups={groups} totalCount={sorted.length} containerRef={containerRef} />}
+          {sortable && !searchTerm && (
+            <JumpRail groups={groups} totalCount={sorted.length} containerRef={containerRef} onJump={scrollToItemIndex} />
+          )}
         </div>
       )}
     </div>

@@ -13,7 +13,27 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    // Default panic behavior prints to stderr, which is invisible once the app is
+    // launched as a bundled binary (not from a terminal) - route panics into the
+    // rotating log file instead so they're visible in exported logs.
+    std::panic::set_hook(Box::new(|info| {
+        log::error!("panic: {info}");
+    }));
+
+    let app = tauri::Builder::default()
+        // Install the file logger before the other plugins and before setup so
+        // failures in the rest of application initialization leave a useful
+        // last-known startup marker.
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                // The dispatch filter is fixed once at build time, so this is
+                // deliberately permissive (Debug) - the actual default runtime
+                // level is set in setup via log::set_max_level(Info).
+                .level(log::LevelFilter::Debug)
+                .max_file_size(5 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+                .build(),
+        )
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_process::init())
@@ -25,9 +45,13 @@ pub fn run() {
             mpv::mpv_load,
             mpv::mpv_stop,
             mpv::mpv_set_volume,
+            mpv::mpv_set_equalizer,
             mpv::mpv_set_property,
             mpv::mpv_get_property,
+            mpv::mpv_list_audio_devices,
             mpv::mpv_get_stderr_tail,
+            waveform::waveform_set_device,
+            waveform::waveform_set_active,
             secrets::secrets_set,
             secrets::secrets_get,
             secrets::secrets_delete,
@@ -54,28 +78,18 @@ pub fn run() {
             window_state::set_window_bounds,
         ])
         .setup(|app| {
-            app.handle().plugin(
-                tauri_plugin_log::Builder::default()
-                    // The dispatch filter is fixed once at build time, so this is
-                    // deliberately permissive (Debug) - the actual default runtime
-                    // level is set right below via log::set_max_level(Info), and
-                    // logs::set_log_level flips that global gate at runtime when the
-                    // user turns on verbose logging in Settings to chase down
-                    // intermittent playback issues (e.g. on Mac).
-                    .level(log::LevelFilter::Debug)
-                    // Defaults (40 KB / KeepOne) rotate by deleting the log outright,
-                    // which can wipe the exact window a playback error happened in
-                    // before a user gets a chance to download it. Keep more headroom
-                    // and history instead.
-                    .max_file_size(5 * 1024 * 1024)
-                    .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
-                    .build(),
-            )?;
             log::set_max_level(log::LevelFilter::Info);
+            log::info!(
+                "startup: logger initialized; version={}, os={}, arch={}",
+                app.package_info().version,
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
 
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
+            log::info!("startup: desktop updater initialized");
 
             // Ensures mpv can never outlive Apogee on Windows, regardless of how
             // this process exits (crash, force-quit, or the updater's
@@ -89,13 +103,17 @@ pub fn run() {
                 app.manage(job);
             }
 
+            #[cfg(not(target_os = "macos"))]
             waveform::ensure_started(&app.handle());
+            #[cfg(target_os = "macos")]
+            log::info!("startup: macOS waveform capture deferred until first playback");
 
             match media_session::init(&app.handle()) {
                 Ok(controls) => {
                     app.manage(media_session::MediaSessionState(std::sync::Mutex::new(
                         Some(controls),
                     )));
+                    log::info!("startup: OS media session initialized");
                 }
                 Err(e) => {
                     log::warn!("failed to initialize OS media session: {e}");
@@ -103,14 +121,17 @@ pub fn run() {
                 }
             }
 
+            log::info!("startup: application setup complete");
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                mpv::kill_on_exit(&app_handle.state::<mpv::MpvState>());
-                discord_rpc::clear_on_exit(&app_handle.state::<discord_rpc::DiscordRpcState>());
-            }
-        });
+        .expect("error while building tauri application");
+
+    log::info!("startup: entering application event loop");
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            mpv::kill_on_exit(&app_handle.state::<mpv::MpvState>());
+            discord_rpc::clear_on_exit(&app_handle.state::<discord_rpc::DiscordRpcState>());
+        }
+    });
 }

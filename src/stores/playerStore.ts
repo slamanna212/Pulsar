@@ -9,11 +9,14 @@ import {
   loadUrl,
   onMpvEvent,
   stopPlayback,
+  setProperty as mpvSetProperty,
+  setEqualizer as mpvSetEqualizer,
   setVolume as mpvSetVolume,
   setMute as mpvSetMute,
 } from '../lib/mpvClient';
 import { buildStreamUrl, type XtreamCredentials } from '../lib/xtream';
 import { onMediaControlEvent, setMediaPlayback, setMediaVolume } from '../lib/mediaSession';
+import { setWaveformActive } from '../lib/waveform';
 import { useSettingsStore } from './settingsStore';
 
 // Plain console.* calls only reach a devtools console (invisible in a
@@ -140,6 +143,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     logInfo(`connecting to channel ${get().currentChannel?.name ?? streamId} (attempt ${connectAttempt + 1}/${MAX_CONNECT_ATTEMPTS})`);
     try {
       await loadUrl(url);
+      // Route playback to the chosen output device (mpv keeps this across
+      // loads within a session, but reapply each connect so a device picked
+      // while stopped, or a fresh mpv process, still honors it). Best-effort:
+      // if the saved device is gone, let mpv keep its default rather than fail.
+      const { audioDevice, equalizer } = useSettingsStore.getState().settings;
+      if (audioDevice) {
+        await mpvSetProperty('audio-device', audioDevice.name).catch((err) => {
+          logWarn(`could not apply audio device ${audioDevice.name}: ${err instanceof Error ? err.message : String(err)}`);
+        });
+      }
+      await mpvSetEqualizer(equalizer.enabled, equalizer.gains).catch((err) => {
+        logWarn(`could not apply equalizer: ${err instanceof Error ? err.message : String(err)}`);
+      });
       await mpvSetVolume(get().volume);
       if (get().muted) await mpvSetMute(true);
       // Status flips to 'playing' once mpv reports 'playback-restart' (see
@@ -163,6 +179,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       const message = err instanceof Error ? err.message : String(err);
       logError(`connect failed for channel ${get().currentChannel?.name ?? streamId}: ${message}`);
       set({ status: 'error', errorMessage: message });
+      setWaveformActive(false);
       throw err;
     }
   }
@@ -200,6 +217,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
     const errorMessage = `Failed to connect after ${MAX_CONNECT_ATTEMPTS} attempts${suffix}`;
     logError(errorMessage);
     set({ status: 'error', errorMessage });
+    setWaveformActive(false);
   }
 
   return {
@@ -217,9 +235,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       onMpvEvent((event) => {
         // Every mpv IPC message, not just the handful acted on below - the
         // main visibility gap when chasing an intermittent stall that never
-        // produces a hard 'error'. Debug level only (enable via Settings >
-        // Diagnostics > Verbose logging), so this doesn't spam by default.
-        logDebug(`mpv event: ${JSON.stringify(event)}`);
+        // produces a hard 'error'. Gate on the verbose-logging setting: mpv
+        // emits property-change events frequently during playback, and
+        // logDebug still pays JSON.stringify + Error().stack + a full IPC
+        // round-trip per call before the Rust-side level filter drops it, so
+        // building this unconditionally is wasted work when verbose is off.
+        if (useSettingsStore.getState().settings.verboseLogging) {
+          logDebug(`mpv event: ${JSON.stringify(event)}`);
+        }
 
         if (event.event === 'playback-restart') {
           if (get().status === 'loading') {
@@ -228,6 +251,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
             stopConnectTimeout();
             set({ status: 'playing', isBuffering: false });
             setMediaPlayback(true);
+            setWaveformActive(true);
             if (channel) startHeartbeat(channel.stream_id);
           }
         } else if (event.event === 'apogee-ipc-closed') {
@@ -240,6 +264,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
           const channel = get().currentChannel;
           logError(`mpv connection lost for channel ${channel?.name ?? channel?.stream_id}`);
           stopHeartbeat();
+          // Stop grinding the FFT on silence while we reconnect; a successful
+          // reconnect flips it back on via the playback-restart handler above.
+          setWaveformActive(false);
           if ((get().status === 'playing' || get().status === 'loading') && channel && lastStreamUrl) {
             connectAttempt = 0;
             connectToUrl(lastStreamUrl, channel.stream_id);
@@ -306,6 +333,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => {
       connectAttempt = 0;
       await stopPlayback();
       set({ status: 'stopped', bitrateKbps: null, isBuffering: false });
+      setWaveformActive(false);
       await setMediaPlayback(false);
     },
 

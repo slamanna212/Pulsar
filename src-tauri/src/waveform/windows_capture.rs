@@ -1,4 +1,4 @@
-use super::CaptureSource;
+use super::{CaptureSource, SelectedAudioDevice};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleFormat;
 use std::io::{self, ErrorKind};
@@ -11,20 +11,37 @@ use tokio::sync::mpsc;
 /// WASAPI backend: passing the *default output* device to
 /// `build_input_stream` transparently sets `AUDCLNT_STREAMFLAGS_LOOPBACK`,
 /// so no raw WASAPI/COM bindings are needed here.
-pub(super) async fn open_windows_capture_source() -> io::Result<CaptureSource> {
+pub(super) async fn open_windows_capture_source(
+    selected: Option<SelectedAudioDevice>,
+) -> io::Result<CaptureSource> {
     let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, "no default audio output device"))?;
+    // Loopback captures whatever the *output* device is playing, so to follow
+    // the user's selection the capture device must be that same output device.
+    // cpal identifies devices by their friendly name, which matches mpv's
+    // `description`; fall back to the default output for "system default" or if
+    // the named device isn't currently present.
+    let device = selected
+        .as_ref()
+        .and_then(|dev| {
+            host.output_devices().ok().and_then(|mut devices| {
+                devices.find(|d| {
+                    d.description()
+                        .is_ok_and(|description| description.name() == dev.description)
+                })
+            })
+        })
+        .or_else(|| host.default_output_device())
+        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, "no audio output device"))?;
     let device_name = device
-        .name()
+        .description()
+        .map(|description| description.name().to_string())
         .unwrap_or_else(|_| "unknown device".to_string());
-    log::info!("waveform: opening WASAPI loopback on default output device '{device_name}'");
+    log::info!("waveform: opening WASAPI loopback on output device '{device_name}'");
 
     let config = device
         .default_output_config()
         .map_err(|e| io::Error::other(format!("failed to read default output config: {e}")))?;
-    let sample_rate = config.sample_rate().0;
+    let sample_rate = config.sample_rate();
     let channels = config.channels() as usize;
     let sample_format = config.sample_format();
     let stream_config: cpal::StreamConfig = config.into();
@@ -39,14 +56,14 @@ pub(super) async fn open_windows_capture_source() -> io::Result<CaptureSource> {
         // parks (with a periodic wakeup to check `stop`) for the stream's
         // entire lifetime instead of handing the stream off anywhere else.
         let err_fn_stop = stop.clone();
-        let err_fn = move |err: cpal::StreamError| {
+        let err_fn = move |err: cpal::Error| {
             log::warn!("waveform: WASAPI loopback stream error ({err}), stopping capture");
             err_fn_stop.store(true, Ordering::SeqCst);
         };
 
         let stream_result = match sample_format {
             SampleFormat::F32 => device.build_input_stream(
-                &stream_config,
+                stream_config,
                 {
                     let tx = tx.clone();
                     move |data: &[f32], _: &cpal::InputCallbackInfo| {
@@ -57,7 +74,7 @@ pub(super) async fn open_windows_capture_source() -> io::Result<CaptureSource> {
                 None,
             ),
             SampleFormat::I16 => device.build_input_stream(
-                &stream_config,
+                stream_config,
                 {
                     let tx = tx.clone();
                     move |data: &[i16], _: &cpal::InputCallbackInfo| {
@@ -68,7 +85,7 @@ pub(super) async fn open_windows_capture_source() -> io::Result<CaptureSource> {
                 None,
             ),
             SampleFormat::U16 => device.build_input_stream(
-                &stream_config,
+                stream_config,
                 {
                     let tx = tx.clone();
                     move |data: &[u16], _: &cpal::InputCallbackInfo| {

@@ -1,9 +1,15 @@
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::secrets;
+
+// One shared client (connection pool + keep-alive) reused across every
+// now-playing update and scrobble, instead of a fresh Client - and thus a new
+// TCP + TLS handshake - per call.
+static HTTP: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 const API_URL: &str = "https://ws.audioscrobbler.com/2.0/";
 const AUTH_URL: &str = "https://www.last.fm/api/auth/";
@@ -126,7 +132,7 @@ async fn call(mut params: BTreeMap<String, String>) -> Result<Value, LastFmError
     params.insert("api_sig".into(), api_sig);
     params.insert("format".into(), "json".into());
 
-    let response = reqwest::Client::new()
+    let response = HTTP
         .post(API_URL)
         .form(&params)
         .send()
@@ -151,14 +157,22 @@ async fn call(mut params: BTreeMap<String, String>) -> Result<Value, LastFmError
 }
 
 async fn authenticated_call(mut params: BTreeMap<String, String>) -> Result<Value, LastFmError> {
-    let session = secrets::get(SESSION_KEYRING_KEY)
+    // secrets::get/delete are synchronous OS-keychain (DBus / Keychain /
+    // Credential Manager) round-trips - run them on the blocking pool so they
+    // don't stall a tokio worker thread.
+    let session = tokio::task::spawn_blocking(|| secrets::get(SESSION_KEYRING_KEY))
+        .await
+        .map_err(|error| LastFmError::transport(format!("keyring task failed: {error}")))?
         .map_err(keyring_error)?
         .ok_or_else(|| LastFmError::api(9, "Connect a Last.fm account first"))?;
     params.insert("sk".into(), session);
     let result = call(params).await;
     if matches!(&result, Err(error) if error.code == Some(9)) {
-        let _ = secrets::delete(SESSION_KEYRING_KEY);
-        let _ = secrets::delete(USERNAME_KEYRING_KEY);
+        let _ = tokio::task::spawn_blocking(|| {
+            let _ = secrets::delete(SESSION_KEYRING_KEY);
+            let _ = secrets::delete(USERNAME_KEYRING_KEY);
+        })
+        .await;
     }
     result
 }

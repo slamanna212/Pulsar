@@ -19,6 +19,7 @@ import { useAlertsStore } from './stores/alertsStore';
 import { useScrobblingStore } from './stores/scrobblingStore';
 import { useSleepTimerStore } from './stores/sleepTimerStore';
 import { setMediaMetadata } from './lib/mediaSession';
+import { setWaveformDevice } from './lib/waveform';
 import {
   discordRpcConnect,
   discordRpcDisconnect,
@@ -58,10 +59,19 @@ const NAV_ITEMS: { page: Page; label: string; icon: typeof IconHome2 }[] = [
 const COMPACT_BREAKPOINT = 900;
 const CARD_WIDTH = 1180;
 const CARD_HEIGHT = 760;
-/** Half of the expanded bar's footprint - how far the card's bottom edge sits above the window's bottom, so the bar can overlap it. */
-const BAR_OVERLAP = 50;
-const EXPANDED_BAR_SIZE = { width: 900, height: 100 };
-const COLLAPSED_BAR_SIZE = { width: 340, height: 80 };
+const RAIL_SHADOW_GUTTER = 24;
+const EXPANDED_RAIL_SIZE = { width: 700, height: 84 };
+const COLLAPSED_RAIL_SIZE = { width: 300, height: 56 };
+const EXPANDED_BAR_SIZE = {
+  width: EXPANDED_RAIL_SIZE.width + RAIL_SHADOW_GUTTER * 2,
+  height: EXPANDED_RAIL_SIZE.height + RAIL_SHADOW_GUTTER * 2,
+};
+const COLLAPSED_BAR_SIZE = {
+  width: COLLAPSED_RAIL_SIZE.width + RAIL_SHADOW_GUTTER * 2,
+  height: COLLAPSED_RAIL_SIZE.height + RAIL_SHADOW_GUTTER * 2,
+};
+/** Align the expanded rail's center with the browser card's bottom edge. */
+const BAR_OVERLAP = EXPANDED_RAIL_SIZE.height / 2 + RAIL_SHADOW_GUTTER;
 
 const LASTFM_PROVIDER_CLIENT: ScrobbleProviderClient = {
   id: 'lastfm',
@@ -183,28 +193,27 @@ function TitlebarButton({ onClick, label, children }: { onClick: () => void; lab
 function AppContent() {
   const { settings, builtinStellarApiKey, loaded: settingsLoaded, load: loadSettings } = useSettingsStore();
   const stellarApiKey = builtinStellarApiKey ?? '';
-  const {
-    channels,
-    channelMetadata,
-    nowPlaying,
-    fetchChannels,
-    pollNowPlaying,
-    fetchChannelMetadata,
-  } = useChannelStore();
-  const {
-    status: playerStatus,
-    currentChannel,
-    volume,
-    muted,
-    errorMessage,
-    isBuffering,
-    selectChannel,
-    play,
-    stop,
-    setVolume,
-    toggleMute,
-    initEventListener,
-  } = usePlayerStore();
+  // Per-field selectors (not a whole-store destructure) so this large shell
+  // re-renders only on the slices it actually uses - not on every bitrate/poll
+  // update pushed into these stores. Actions are stable store references.
+  const channels = useChannelStore((s) => s.channels);
+  const channelMetadata = useChannelStore((s) => s.channelMetadata);
+  const nowPlaying = useChannelStore((s) => s.nowPlaying);
+  const fetchChannels = useChannelStore((s) => s.fetchChannels);
+  const pollNowPlaying = useChannelStore((s) => s.pollNowPlaying);
+  const fetchChannelMetadata = useChannelStore((s) => s.fetchChannelMetadata);
+  const playerStatus = usePlayerStore((s) => s.status);
+  const currentChannel = usePlayerStore((s) => s.currentChannel);
+  const volume = usePlayerStore((s) => s.volume);
+  const muted = usePlayerStore((s) => s.muted);
+  const errorMessage = usePlayerStore((s) => s.errorMessage);
+  const isBuffering = usePlayerStore((s) => s.isBuffering);
+  const selectChannel = usePlayerStore((s) => s.selectChannel);
+  const play = usePlayerStore((s) => s.play);
+  const stop = usePlayerStore((s) => s.stop);
+  const setVolume = usePlayerStore((s) => s.setVolume);
+  const toggleMute = usePlayerStore((s) => s.toggleMute);
+  const initEventListener = usePlayerStore((s) => s.initEventListener);
   const { loaded: libraryLoaded, load: loadLibrary, recordPlay, favorites, toggleFavorite } = useLibraryStore();
   const lastFmConnection = useScrobblingStore((state) => state.providers.lastfm);
   const scrobbleCoordinatorRef = useRef<ScrobbleCoordinator | null>(null);
@@ -299,6 +308,17 @@ function AppContent() {
   useEffect(() => {
     if (settingsLoaded) {
       invoke('set_log_level', { verbose: settings.verboseLogging }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded]);
+
+  // Point the visualizer at the saved output device from launch (its capture
+  // runs independently of playback). Changes made in Settings apply themselves;
+  // this only restores the persisted choice on startup.
+  useEffect(() => {
+    if (settingsLoaded) {
+      const device = settings.audioDevice;
+      void setWaveformDevice(device?.name ?? null, device?.description ?? null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsLoaded]);
@@ -502,7 +522,10 @@ function AppContent() {
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        borderRadius: browserOpen ? 26 : 999,
+        // The transport surface owns the mini-player's capsule shape. Applying
+        // another extreme radius here clips the surface asymmetrically and can
+        // cover controls near the right edge.
+        borderRadius: browserOpen ? 26 : 0,
         transform: 'translateZ(0)',
       }}
     >
@@ -649,7 +672,17 @@ function AppContent() {
       )}
 
       {!onboardingActive && (
-        <div style={{ position: 'absolute', left: '50%', bottom: 0, transform: 'translateX(-50%)', zIndex: 10 }}>
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: RAIL_SHADOW_GUTTER,
+            width: barMode === 'expanded' ? EXPANDED_RAIL_SIZE.width : COLLAPSED_RAIL_SIZE.width,
+            height: barMode === 'expanded' ? EXPANDED_RAIL_SIZE.height : COLLAPSED_RAIL_SIZE.height,
+            transform: 'translateX(-50%)',
+            zIndex: 10,
+          }}
+        >
           <TransportBar
             mode={barMode}
             status={playerStatus}

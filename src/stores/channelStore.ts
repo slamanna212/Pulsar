@@ -15,9 +15,13 @@ export function nextPollDelayMs(failureCount: number): number {
   return Math.min(POLL_INTERVAL_MS * 2 ** failureCount, MAX_POLL_INTERVAL_MS);
 }
 
-// Persists across channel-list/category changes for the lifetime of the app -
+// Persist across channel-list/category changes for the lifetime of the app -
 // stale entries for stream_ids no longer in `channels` are simply never read.
+// One maps a channel to its matched now-playing station; the other to its
+// Stellar-channel metadata record. Both let their build fns skip the O(len²)
+// fuzzy match for already-matched channels.
 const stationIdCache = new Map<number, string>();
+const metadataIdCache = new Map<number, string>();
 
 // The StellarTunerLog channel catalog rarely changes - avoid refetching it on
 // every launch by caching it to disk for a few hours.
@@ -85,7 +89,7 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
     try {
       const response = await getNowPlaying(apiKey);
       const stations = Object.values(response.stations);
-      const next = buildNowPlayingMap(channels, stations, stationIdCache);
+      const next = buildNowPlayingMap(channels, stations, stationIdCache, nowPlaying);
       set({
         nowPlaying: nowPlayingMapsEqual(nowPlaying, next) ? nowPlaying : next,
         pollFailureCount: 0,
@@ -104,7 +108,7 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
     try {
       const stellarChannels = await getCachedStellarChannels();
       set({
-        channelMetadata: buildChannelMetadataMap(channels, stellarChannels),
+        channelMetadata: buildChannelMetadataMap(channels, stellarChannels, metadataIdCache),
         metadataStatus: 'loaded',
       });
     } catch {
