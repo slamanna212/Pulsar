@@ -38,3 +38,11 @@ Apogee combines these streams with internet data to provide a beautiful player e
 
 ![Medium Player](https://github.com/slamanna212/Apogee/blob/main/.github/assets/mediumplayer.png?raw=true "Medium Player")
 
+## macOS startup diagnostics
+
+If Apogee closes before its in-app log exporter can be opened, collect these files before relaunching:
+
+- Apogee logs: `~/Library/Logs/com.slamanna.apogee/`
+- macOS crash reports: `~/Library/Logs/DiagnosticReports/` (files beginning with `Apogee`)
+
+The application log includes startup milestones for plugin setup, media-session setup, waveform capture, and entry into the event loop. Native macOS terminations may only appear in Diagnostic Reports.

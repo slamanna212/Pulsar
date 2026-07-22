@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- Required before starting the Core Audio process tap used by the live
+       visualizer. Without this declaration macOS can terminate the app at the
+       privacy boundary before Apogee's own file logger can record the cause. -->
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>Apogee captures system audio locally to animate the playback visualizer. Audio is not saved or transmitted.</string>
+
   <!-- Xtream base URLs are arbitrary, user-configured at runtime, and many
        providers serve stream_icon logos over plain http:// - without this,
        macOS's WKWebView blocks those <img> loads under App Transport

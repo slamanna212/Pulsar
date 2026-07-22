@@ -217,6 +217,41 @@ jobs:
           releaseDraft: true
           prerelease: ${{ needs.check-version.outputs.prerelease == 'true' }}
 
+      - name: Validate packaged macOS application
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle/macos/Apogee.app"
+          INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
+          EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Apogee"
+
+          USAGE_DESCRIPTION=$(/usr/libexec/PlistBuddy -c 'Print :NSAudioCaptureUsageDescription' "$INFO_PLIST")
+          test -n "$USAGE_DESCRIPTION"
+
+          ARCHITECTURES=$(lipo -archs "$EXECUTABLE")
+          case " $ARCHITECTURES " in *" arm64 "*) ;; *) echo "missing arm64 architecture: $ARCHITECTURES"; exit 1 ;; esac
+          case " $ARCHITECTURES " in *" x86_64 "*) ;; *) echo "missing x86_64 architecture: $ARCHITECTURES"; exit 1 ;; esac
+
+          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
+          STDOUT_LOG="$RUNNER_TEMP/apogee-smoke.stdout"
+          STDERR_LOG="$RUNNER_TEMP/apogee-smoke.stderr"
+          "$EXECUTABLE" >"$STDOUT_LOG" 2>"$STDERR_LOG" &
+          APP_PID=$!
+          cleanup() {
+            kill "$APP_PID" 2>/dev/null || true
+            wait "$APP_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          sleep 8
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "Apogee exited during the macOS launch smoke test"
+            cat "$STDOUT_LOG"
+            cat "$STDERR_LOG"
+            exit 1
+          fi
+
       - name: Upload stable-named download aliases
         shell: bash
         env:

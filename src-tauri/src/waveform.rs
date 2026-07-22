@@ -188,12 +188,24 @@ static WAVEFORM_DEVICE: OnceLock<watch::Sender<Option<SelectedAudioDevice>>> = O
 /// frontend via `waveform_set_active` on play/stop.
 static WAVEFORM_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Gates the capture->FFT->emit pipeline on whether playback is active. The
-/// capture source itself stays open (reopening it has latency and can fail), so
-/// the bars react instantly when playback resumes.
+/// Gates the capture->FFT->emit pipeline on whether playback is active. On
+/// macOS, the first activation also starts the capture source: that keeps the
+/// system-audio privacy prompt out of application launch and presents it in
+/// the context of the user's first playback. Once opened, the source stays
+/// alive so subsequent playback reacts immediately. Other desktop platforms
+/// continue to initialize capture during application setup.
 #[tauri::command]
-pub fn waveform_set_active(active: bool) {
+pub fn waveform_set_active(app: AppHandle, active: bool) {
     WAVEFORM_ACTIVE.store(active, Ordering::Relaxed);
+
+    #[cfg(target_os = "macos")]
+    if active {
+        log::info!("waveform: first playback requested; ensuring macOS capture is started");
+        ensure_started(&app);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
 }
 
 /// Points the visualizer at a specific output device (or `None` for the system
