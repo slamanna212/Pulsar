@@ -72,6 +72,7 @@ export function JumpRail({ groups, totalCount, containerRef, onJump }: JumpRailP
           role="button"
           style={{
             font: '700 10px "Space Grotesk", sans-serif',
+            lineHeight: '12px',
             color: active === g.label ? 'var(--app-accent2)' : 'var(--app-dim2)',
             cursor: 'pointer',
           }}

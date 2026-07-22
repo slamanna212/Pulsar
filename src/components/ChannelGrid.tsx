@@ -6,12 +6,16 @@ import { debug as logDebug } from '@tauri-apps/plugin-log';
 import { ChannelCard, CHANNEL_CARD_MIN_WIDTH, CHANNEL_CARD_GAP } from './ChannelCard';
 import { ChannelListRow } from './ChannelListRow';
 import { JumpRail } from './JumpRail';
+import { buildNumericJumpGroups } from '../lib/channelJumpGroups';
 import { channelMatchesSearch } from '../lib/channelSearch';
 import type { XtreamChannel } from '../types/xtream';
 import type { StellarChannel, StellarStation } from '../types/stellarTunerLog';
 import type { SortMode, ViewMode } from '../stores/libraryStore';
 
 const SEARCH_DEBOUNCE_MS = 150;
+const JUMP_LABEL_HEIGHT = 12;
+const JUMP_LABEL_GAP = 2;
+const DEFAULT_MAX_JUMP_GROUPS = 25;
 
 interface ChannelGridProps {
   title: string;
@@ -96,45 +100,54 @@ export function ChannelGrid({
     return list;
   }, [filtered, channelMetadata, sortMode, sortable]);
 
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const maxNumericJumpGroups = containerSize.height > 0
+    ? Math.max(1, Math.floor((containerSize.height + JUMP_LABEL_GAP) / (JUMP_LABEL_HEIGHT + JUMP_LABEL_GAP)))
+    : DEFAULT_MAX_JUMP_GROUPS;
+
   const groups = useMemo(() => {
     if (!sortable) return [];
+
+    if (sortMode === 'channel_number') {
+      return buildNumericJumpGroups(
+        sorted.map((channel) => channelMetadata.get(channel.stream_id)?.channel_number ?? channel.num),
+        maxNumericJumpGroups,
+      );
+    }
+
     const seen = new Set<string>();
     const result: { label: string; index: number }[] = [];
     sorted.forEach((channel, index) => {
-      const label =
-        sortMode === 'az'
-          ? (channelMetadata.get(channel.stream_id)?.marketing_name || channel.name).charAt(0).toUpperCase()
-          : `${Math.floor((channelMetadata.get(channel.stream_id)?.channel_number ?? channel.num) / 10) * 10}`;
+      const label = (channelMetadata.get(channel.stream_id)?.marketing_name || channel.name).charAt(0).toUpperCase();
       if (!seen.has(label)) {
         seen.add(label);
         result.push({ label, index });
       }
     });
     return result;
-  }, [sorted, sortMode, channelMetadata, sortable]);
+  }, [sorted, sortMode, channelMetadata, sortable, maxNumericJumpGroups]);
 
   // Virtualization: only the visible cards/rows are mounted, so a full-category
   // list (hundreds of channels, each an expensive backdrop-filter card) doesn't
   // pay layout/paint for offscreen items. The scroll container (containerRef) is
   // the virtualizer's scroll element in both modes.
-  const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    setContainerWidth(el.clientWidth);
+    setContainerSize({ width: el.clientWidth, height: el.clientHeight });
     const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (w != null) setContainerWidth(w);
+      const size = entries[0]?.contentRect;
+      if (size) setContainerSize({ width: size.width, height: size.height });
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [sorted.length]);
 
   // clientWidth already excludes the container's own left/right padding, so the
   // grid columns follow the same auto-fill math the CSS grid would use.
   const columns = Math.max(
     1,
-    Math.floor((containerWidth + CHANNEL_CARD_GAP) / (CHANNEL_CARD_MIN_WIDTH + CHANNEL_CARD_GAP)),
+    Math.floor((containerSize.width + CHANNEL_CARD_GAP) / (CHANNEL_CARD_MIN_WIDTH + CHANNEL_CARD_GAP)),
   );
   const lanes = viewMode === 'grid' ? columns : 1;
   const rowCount = Math.ceil(sorted.length / lanes);
@@ -143,7 +156,7 @@ export function ChannelGrid({
   // the initial estimate that keeps the scrollbar roughly right before measurement.
   const estimatedRowHeight =
     viewMode === 'grid'
-      ? Math.round((containerWidth - CHANNEL_CARD_GAP * (columns - 1)) / columns) + 62
+      ? Math.round((containerSize.width - CHANNEL_CARD_GAP * (columns - 1)) / columns) + 62
       : 122;
 
   const rowVirtualizer = useVirtualizer({
